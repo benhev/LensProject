@@ -98,21 +98,24 @@ def file_read(directory):
 # Constant constructs #
 # The following constructs up to the loop environment are shared by all generated lensing instances
 deltapix = 0.05  # pixel resolution
+npix = 100
 kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
 # PSF
 kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
 psf = PSF(**kwargs_psf)
 kernel = psf.kernel_point_source
 # Pixel Grid
-pixelGrid = grid(dpix=deltapix, npix=100, origin_ra=0, origin_dec=0)
+pixelGrid = grid(dpix=deltapix, npix=npix, origin_ra=0, origin_dec=0)
 xgrid, ygrid = pixelGrid.pixel_coordinates
 
 # f, ax = plt.subplots(3, n, figsize=(8, 8))
 # with open('lens_test1.txt', mode='a') as file:.
-
+stack_size = 10000
 for i in range(10):
     data = []
-    for _ in range(10000):
+    kdata = np.zeros((stack_size, npix, npix, 1))
+    imdata = np.zeros((stack_size, npix, npix, 1))
+    for _ in range(stack_size):
         # Lens
         lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
         # Source
@@ -124,16 +127,21 @@ for i in range(10):
         image = imageModel.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light, point_source_add=False,
                                  lens_light_add=False)
         kappa = lensModel.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens)
-        data.append([image, kappa])
+        image = image.reshape(image.shape[0], image.shape[1], 1)
+        kappa = kappa.reshape(kappa.shape[0], kappa.shape[1], 1)
+        kdata[_] = kappa
+        imdata[_] = image
         # brightness = lightModel.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light)
         #
         # ax[0, _].matshow(image, origin='lower')
         # ax[1, _].matshow(brightness, origin='lower')
         # ax[2, _].matshow(np.log10(kappa), origin='lower')
 
+    data = [imdata, kdata]
     filename = ''.join(['Training Set/lens_set_', str(i + 1), '.xz'])
     with lzma.open(filename, mode='xb') as file:
         pickle.dump(data, file)
+
 # # Lens
 # lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
 # # Source
