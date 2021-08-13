@@ -53,7 +53,6 @@ def generate_lens(grid_class):
     thetas = []
     pars = []
     for _ in range(num_of_lenses):
-        print()
         e1, e2 = np.random.uniform(-0.5, 0.5, 2)
         theta = np.random.uniform(1, 5)
         cx, cy = np.random.randint(margin, grid_len + 1 - margin, 2)
