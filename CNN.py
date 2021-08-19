@@ -8,6 +8,7 @@ from keras.models import Sequential
 from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPool2D
 from keras import backend as K
 import tensorflow as tf
+from PIL import Image
 
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
@@ -33,22 +34,23 @@ print(x_test.shape[0], 'test samples')
 
 # MODEL
 
-model = Sequential()
-model.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
-model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
-model.add(MaxPool2D(pool_size=(2, 2)))
-model.add(Dropout(0.25))
-model.add(Flatten())
-model.add(Dense(256, activation='relu'))
-model.add(Dropout(0.5))
-model.add(Dense(num_classes, activation='softmax'))
+# model = Sequential()
+# model.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
+# model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
+# model.add(MaxPool2D(pool_size=(2, 2)))
+# model.add(Dropout(0.25))
+# model.add(Flatten())
+# model.add(Dense(256, activation='relu'))
+# model.add(Dropout(0.5))
+# model.add(Dense(num_classes, activation='softmax'))
+#
+# model.compile(loss=tf.keras.losses.categorical_crossentropy, optimizer=tf.keras.optimizers.Adadelta(),
+#               metrics=['accuracy'])
 
-model.compile(loss=tf.keras.losses.categorical_crossentropy, optimizer=tf.keras.optimizers.Adadelta(),
-              metrics=['accuracy'])
-
+model = tf.keras.models.load_model('mnist.h5')
 model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(x_test, y_test))
 
-model.save('mnist.h5')
+model.save('mnist2.h5')
 print('The model has successfully trained.')
 
 
