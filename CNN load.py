@@ -5,7 +5,7 @@ from keras.datasets import mnist
 from PIL import Image, ImageChops
 from matplotlib import pyplot as plt
 
-model = keras.models.load_model('mnist.h5')
+model = tf.keras.models.load_model('mnist2.h5')
 
 
 def predict_digit(img):
@@ -16,6 +16,7 @@ def predict_digit(img):
     img = np.array(img)
     # reshaping to support our model input and normalizing
     img = img.reshape(1, 28, 28, 1)
+
     img = img / 255.0
     # predicting the class
     plt.matshow(img[0])
@@ -44,9 +45,9 @@ def predict_digit(img):
 #
 # np.argmax
 
-with Image.open('3.jpg') as im:
-    plt.matshow(im)
-    im=ImageChops.invert(im)
+with Image.open('8.jpg') as im:
+    # plt.matshow(im)
+    # im=ImageChops.invert(im)
     plt.matshow(im)
     result, acc = predict_digit(im)
     # plt.matshow(x_test[0])
