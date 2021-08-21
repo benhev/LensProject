@@ -5,7 +5,10 @@ import win32gui
 from PIL import ImageGrab, Image
 import numpy as np
 
-model = load_model('mnist2.h5')
+ver = 3
+NAME = 'digit_recog_v{}}.h5'.format(ver)
+
+model = load_model('models/{}'.format(NAME))
 
 
 def predict_digit(img):
