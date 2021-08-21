@@ -7,25 +7,25 @@ from tensorflow.keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPool2D
 import tensorflow as tf
 # from PIL import Image
 from tensorflow.keras.callbacks import TensorBoard
-from os.path import isfile
+from os.path import isdir
 
-batch_size = 32
+batch_size = 30 #20
 num_classes = 10
-epochs = 10
+epochs = 50
 input_shape = (28, 28, 1)
 print('Model version: ')
 ver = input()
-NAME = 'digit_recog_v{}'.format(ver)
-while isfile('models/{}'.format(NAME)):
-    print('Model version: ')
+NAME = 'digit_recog_v'+ver
+while isdir('models/'+NAME):
+    print('Model version exists. Enter different version: ')
     ver = input()
-    NAME = 'digit_recog_v{}'.format(ver)
+    NAME = 'digit_recog_v'+ver
 
 print(NAME)
 
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
-tb = TensorBoard(log_dir='logs/{}'.format(NAME))
+tb = TensorBoard(log_dir='logs/'+NAME)
 
 # print(x_train.shape, y_train.shape)
 
@@ -52,11 +52,11 @@ x_test = tf.keras.utils.normalize(x_test, axis=1)
 # MODEL
 
 model = Sequential()
-model.add(Conv2D(32, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
+model.add(Conv2D(64, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
 model.add(MaxPool2D(pool_size=(2, 2)))
 model.add(Conv2D(64, kernel_size=(3, 3), activation='relu'))
 model.add(MaxPool2D(pool_size=(2, 2)))
-model.add(Dropout(0.25))
+# model.add(Dropout(0.25))
 model.add(Flatten())
 model.add(Dense(128, activation='relu'))
 # model.add(Dropout(0.5))
@@ -69,5 +69,5 @@ model.compile(loss='categorical_crossentropy', optimizer='Adadelta',
 model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(x_test, y_test),
           callbacks=tb)
 
-model.save('models/{}'.format(NAME), overwrite=False)
+model.save('models/' + NAME)
 print('The model has successfully trained.')
