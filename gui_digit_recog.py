@@ -6,7 +6,7 @@ from PIL import ImageGrab, Image
 import numpy as np
 
 ver = 3
-NAME = 'digit_recog_v{}}.h5'.format(ver)
+NAME = 'digit_recog_v{}}'.format(ver)
 
 model = load_model('models/{}'.format(NAME))
 

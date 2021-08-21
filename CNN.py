@@ -3,29 +3,28 @@ import numpy as np
 batch_size = 32
 num_classes = 10
 epochs = 10
+input_shape = (28, 28, 1)
+ver = 3
+NAME = 'digit_recog_v{}'.format(ver)
+print(NAME)
 
-import keras
-from keras.datasets import mnist
-from keras.models import Sequential
-from keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPool2D
-from keras import backend as K
+# import keras
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.models import Sequential
+from tensorflow.keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPool2D
+# from keras import backend as K
 import tensorflow as tf
-from PIL import Image
+# from PIL import Image
 from tensorflow.keras.callbacks import TensorBoard
-
-
-ver=3
-NAME = 'digit_recog_v{}.h5'.format(ver)
 
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
 
 tb = TensorBoard(log_dir='logs/{}'.format(NAME))
 
-print(x_train.shape, y_train.shape)
+# print(x_train.shape, y_train.shape)
 
 x_train = x_train.reshape(x_train.shape[0], 28, 28, 1)
 x_test = x_test.reshape(x_test.shape[0], 28, 28, 1)
-input_shape = (28, 28, 1)
 
 # print(y_train.shape)
 
@@ -40,9 +39,9 @@ y_test = tf.keras.utils.to_categorical(y_test, num_classes=num_classes)
 x_train = tf.keras.utils.normalize(x_train, axis=1)
 x_test = tf.keras.utils.normalize(x_test, axis=1)
 
-print('x_train shape:', x_train.shape)
-print(x_train.shape[0], 'train samples')
-print(x_test.shape[0], 'test samples')
+# print('x_train shape:', x_train.shape)
+# print(x_train.shape[0], 'train samples')
+# print(x_test.shape[0], 'test samples')
 
 # MODEL
 
@@ -61,7 +60,8 @@ model.compile(loss='categorical_crossentropy', optimizer='Adadelta',
               metrics=['accuracy'])
 
 # model = tf.keras.models.load_model('mnist.h5')
-model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(x_test, y_test), callbacks=tb)
+model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(x_test, y_test),
+          callbacks=tb)
 
-model.save('models/{}'.format(NAME))
+model.save('models/{}'.format(NAME), overwrite=False)
 print('The model has successfully trained.')
