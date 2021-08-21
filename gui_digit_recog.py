@@ -1,14 +1,21 @@
-from keras.models import load_model
+from tensorflow.keras.models import load_model
 from tkinter import *
 import tkinter as tk
 import win32gui
 from PIL import ImageGrab, Image
 import numpy as np
+from os.path import isdir
 
-ver = 3
-NAME = 'digit_recog_v{}}'.format(ver)
+print('Load version: ')
+ver = input()
+NAME = 'digit_recog_v'+ver
+while not isdir('models/'+NAME):
+    print('Model version does not exists. Enter different version: ')
+    ver = input()
+    NAME = 'digit_recog_v'+ver
 
-model = load_model('models/{}'.format(NAME))
+model = load_model('models/'+NAME)
+
 
 
 def predict_digit(img):

@@ -4,11 +4,17 @@ import keras
 from keras.datasets import mnist
 from PIL import Image, ImageChops
 from matplotlib import pyplot as plt
+from os.path import isdir
 
-ver=3
-NAME='digit_recog_v{}}'.format(ver)
+print('Load version: ')
+ver = input()
+NAME = 'digit_recog_v'+ver
+while not isdir('models/'+NAME):
+    print('Model version does not exists. Enter different version: ')
+    ver = input()
+    NAME = 'digit_recog_v'+ver
 
-model = tf.keras.models.load_model('models/{}'.format(NAME))
+model = tf.keras.models.load_model('models/'+NAME)
 
 
 def predict_digit(img):
@@ -30,32 +36,32 @@ def predict_digit(img):
 #
 (_, _), (x_test, y_test) = mnist.load_data()
 #
-# # x_train = x_train.reshape(x_train.shape[0], 28, 28, 1)
-# x_test = x_test.reshape(x_test.shape[0], 28, 28, 1)
-# input_shape = (28, 28, 1)
-#
-# # y_train = tf.keras.utils.to_categorical(y_train, num_classes=num_classes)
-# y_test = tf.keras.utils.to_categorical(y_test, num_classes=10)
-#
-# # x_train = x_train.astype('float32')
-# x_test = x_test.astype('float32')
-# # x_train /= 255
-# x_test /= 255
-#
-# score = model.evaluate(x_test, y_test, verbose=0)
-# print('Test loss:', score[0])
-# print('Test accuracy:', score[1])
-#
+# x_train = x_train.reshape(x_train.shape[0], 28, 28, 1)
+x_test = x_test.reshape(x_test.shape[0], 28, 28, 1)
+input_shape = (28, 28, 1)
+
+# y_train = tf.keras.utils.to_categorical(y_train, num_classes=num_classes)
+y_test = tf.keras.utils.to_categorical(y_test, num_classes=10)
+
+# x_train = x_train.astype('float32')
+x_test = x_test.astype('float32')
+# x_train /= 255
+x_test /= 255
+
+score = model.evaluate(x_test, y_test, verbose=0)
+print('Test loss:', score[0])
+print('Test accuracy:', score[1])
+
 # np.argmax
 
-with Image.open('8.jpg') as im:
-    # plt.matshow(im)
-    # im=ImageChops.invert(im)
-    plt.matshow(im)
-    result, acc = predict_digit(im)
-    # plt.matshow(x_test[0])
-    print('Result:', str(result), ' with accuracy', str(100 * acc), '.')
-    plt.show()
+# with Image.open('8.jpg') as im:
+#     # plt.matshow(im)
+#     # im=ImageChops.invert(im)
+#     plt.matshow(im)
+#     result, acc = predict_digit(im)
+#     # plt.matshow(x_test[0])
+#     print('Result:', str(result), ' with accuracy', str(100 * acc), '.')
+#     plt.show()
 # for i in range(10):
 
 # i=3;
