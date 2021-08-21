@@ -7,6 +7,7 @@ from tensorflow.keras.layers import Dense, Dropout, Flatten, Conv2D, MaxPool2D
 import tensorflow as tf
 # from PIL import Image
 from tensorflow.keras.callbacks import TensorBoard
+from os.path import isfile
 
 batch_size = 32
 num_classes = 10
@@ -15,6 +16,11 @@ input_shape = (28, 28, 1)
 print('Model version: ')
 ver = input()
 NAME = 'digit_recog_v{}'.format(ver)
+while isfile('models/{}'.format(NAME)):
+    print('Model version: ')
+    ver = input()
+    NAME = 'digit_recog_v{}'.format(ver)
+
 print(NAME)
 
 (x_train, y_train), (x_test, y_test) = mnist.load_data()
