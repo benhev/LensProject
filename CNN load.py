@@ -5,7 +5,10 @@ from keras.datasets import mnist
 from PIL import Image, ImageChops
 from matplotlib import pyplot as plt
 
-model = tf.keras.models.load_model('mnist2.h5')
+ver=3
+NAME='digit_recog_v{}}.h5'.format(ver)
+
+model = tf.keras.models.load_model('models/{}'.format(NAME))
 
 
 def predict_digit(img):
