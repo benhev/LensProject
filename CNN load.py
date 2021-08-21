@@ -6,7 +6,7 @@ from PIL import Image, ImageChops
 from matplotlib import pyplot as plt
 
 ver=3
-NAME='digit_recog_v{}}.h5'.format(ver)
+NAME='digit_recog_v{}}'.format(ver)
 
 model = tf.keras.models.load_model('models/{}'.format(NAME))
 
