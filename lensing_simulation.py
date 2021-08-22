@@ -104,7 +104,7 @@ kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
 psf = PSF(**kwargs_psf)
 kernel = psf.kernel_point_source
 # Pixel Grid
-pixelGrid = grid(dpix=deltapix, npix=500, origin_ra=0, origin_dec=0)
+pixelGrid = grid(dpix=deltapix, npix=100, origin_ra=0, origin_dec=0)
 xgrid, ygrid = pixelGrid.pixel_coordinates
 
 # f, ax = plt.subplots(3, n, figsize=(8, 8))
