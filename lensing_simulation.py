@@ -111,7 +111,8 @@ xgrid, ygrid = pixelGrid.pixel_coordinates
 # f, ax = plt.subplots(3, n, figsize=(8, 8))
 # with open('lens_test1.txt', mode='a') as file:.
 stack_size = 10000
-for i in range(10):
+stacks = 10
+for i in range(stacks):
     data = []
     kdata = np.zeros((stack_size, npix, npix, 1))
     imdata = np.zeros((stack_size, npix, npix, 1))
