@@ -138,7 +138,7 @@ for i in range(10):
         # ax[2, _].matshow(np.log10(kappa), origin='lower')
 
     data = [imdata, kdata]
-    filename = ''.join(['Training Set/lens_set_', str(i + 1), '.xz'])
+    filename = ''.join(['/content/Drive/MyDrive/Training Set/lens_set_', str(i + 1), '.xz'])
     with lzma.open(filename, mode='xb') as file:
         pickle.dump(data, file)
 
