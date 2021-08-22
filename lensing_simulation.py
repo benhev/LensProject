@@ -110,10 +110,9 @@ xgrid, ygrid = pixelGrid.pixel_coordinates
 # f, ax = plt.subplots(3, n, figsize=(8, 8))
 # with open('lens_test1.txt', mode='a') as file:.
 
-'''
 for i in range(10):
     data = []
-    for _ in range(1000):
+    for _ in range(10000):
         # Lens
         lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
         # Source
@@ -135,25 +134,24 @@ for i in range(10):
     filename = ''.join(['Training Set/lens_set_', str(i + 1), '.xz'])
     with lzma.open(filename, mode='xb') as file:
         pickle.dump(data, file)
-'''
-# Lens
-lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
-# Source
-lightModel, kwargs_light = light(grid_class=pixelGrid, lens_centers=centers, lens_thetas=thetas)
-# Image Model
-imageModel = ImageModel(data_class=pixelGrid, psf_class=psf, lens_model_class=lensModel,
-                        source_model_class=lightModel,
-                        lens_light_model_class=None, point_source_class=None, kwargs_numerics=kwargs_nums)
-image = imageModel.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light, point_source_add=False,
-                         lens_light_add=False)
-kappa = lensModel.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens)
-
-
-brightness = lightModel.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light)
-f, ax = plt.subplots(1, 3, figsize=(8, 8))
-ax[0].matshow(np.log10(kappa), origin='lower')
-ax[1].matshow(image, origin='lower')
-ax[2].matshow(brightness, origin='lower')
-
-f.tight_layout()
-plt.show()
+# # Lens
+# lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
+# # Source
+# lightModel, kwargs_light = light(grid_class=pixelGrid, lens_centers=centers, lens_thetas=thetas)
+# # Image Model
+# imageModel = ImageModel(data_class=pixelGrid, psf_class=psf, lens_model_class=lensModel,
+#                         source_model_class=lightModel,
+#                         lens_light_model_class=None, point_source_class=None, kwargs_numerics=kwargs_nums)
+# image = imageModel.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light, point_source_add=False,
+#                          lens_light_add=False)
+# kappa = lensModel.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens)
+#
+#
+# brightness = lightModel.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light)
+# f, ax = plt.subplots(1, 3, figsize=(8, 8))
+# ax[0].matshow(np.log10(kappa), origin='lower')
+# ax[1].matshow(image, origin='lower')
+# ax[2].matshow(brightness, origin='lower')
+#
+# f.tight_layout()
+# plt.show()
