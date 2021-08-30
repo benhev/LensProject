@@ -28,8 +28,8 @@ tb = TensorBoard(log_dir='logs/' + NAME)  # TensorBoard
 mcp = ModelCheckpoint(filepath='models/' + NAME + '/Checkpoint)', save_freq='epoch', verbose=1)  # Model Checkpoint
 mbst = ModelCheckpoint(filepath='models/' + NAME + '/BestFit', monitor='val_loss',
                        save_best_only=True, verbose=1)  # Best Model Checkpoint
-estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)
-redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min', min_delta=1e-4)
+estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1) # Early Stopping
+redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min', min_delta=1e-4) # Adaptive Learning Rate  
 
 ### End Callbacks ###
 
