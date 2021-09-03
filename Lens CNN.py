@@ -60,10 +60,11 @@ def import_data(directory: str, stack=10000, img_shape=(100, 100)):
     return (x, y), (X, Y)
 
 
-batch_size = 30  # 20
+batch_size = 100  # 20
 # num_classes = 10
 epochs = 1
 input_shape = (100, 100, 1)
+training_dir = 'Temp Training Set'
 print('Model version: ')
 ver = input()
 NAME = 'Lens_CNN_v' + ver
@@ -83,10 +84,9 @@ mbst = ModelCheckpoint(filepath='models/' + NAME + '/BestFit.h5', monitor='val_l
 estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
 redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
                           min_delta=1e-4)  # Adaptive Learning Rate
-
-(x_train, y_train), (x_test, y_test) = import_data(directory='Temp Training Set', stack=100, img_shape=(100, 100))
-
 ### End Callbacks ###
+
+(x_train, y_train), (x_test, y_test) = import_data(directory=training_dir, stack=100, img_shape=(100, 100))
 
 x_train = tf.keras.utils.normalize(x_train, axis=1)
 x_test = tf.keras.utils.normalize(x_test, axis=1)
@@ -94,19 +94,20 @@ x_test = tf.keras.utils.normalize(x_test, axis=1)
 ### MODEL ###
 
 model = Sequential()
-model.add(Conv2D(128, kernel_size=(3, 3), activation='relu', input_shape=input_shape))
-model.add(MaxPool2D(pool_size=(2, 2)))
-model.add(Conv2D(128, kernel_size=(3, 3), activation='relu'))
-model.add(MaxPool2D(pool_size=(2, 2)))
+model.add(Conv2D(64, kernel_size=(3, 3), activation='relu', input_shape=input_shape,, padding='same'))
+# model.add(MaxPool2D(pool_size=(2, 2),padding='same'))
+model.add(Conv2D(64, kernel_size=(3, 3), activation='relu', padding='same'))
+# model.add(MaxPool2D(pool_size=(2, 2),padding='same'))
+
 # model.add(Dropout(0.25))
-model.add(Flatten())
-model.add(Dense(128, activation='relu'))
+# model.add(Flatten())
+# model.add(Dense(128, activation='relu'))
 # model.add(Dropout(0.5))
-model.add(Dense(num_classes, activation='softmax'))
+# model.add(Dense(num_classes, activation='softmax'))
 
-model.compile(loss='categorical_crossentropy', optimizer='Adadelta',
+model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same'))
+model.compile(loss=tf.keras.losses.mse, optimizer='Adadelta',
               metrics=['accuracy'])
-
 # model = tf.keras.models.load_model('mnist.h5')
 model.fit(x_train, y_train, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(x_test, y_test),
           callbacks=[tb, mcp, mbst, redlr])
