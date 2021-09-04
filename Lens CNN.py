@@ -142,7 +142,7 @@ print(f'Building model {NAME}')
 
 ### Callbacks ###
 
-# tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
+tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
 # mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1)  # Model Checkpoint
 # mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit.h5', monitor='val_loss',
 #                        save_best_only=True, verbose=1)  # Best Model Checkpoint
