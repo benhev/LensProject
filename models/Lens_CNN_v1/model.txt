@@ -1,8 +1,8 @@
 Model Lens_CNN_v1
-Batch size: 500
-Number of Epochs: 1
+Number of training instances: 100000
+Batch size: 20
+Number of Epochs: 10
 Loss Function: mean_squared_error
-Model Architecture: An input layer + 1 hidden convolution layers with kernel_size=(3, 3) and 64 filters in each layer.
-	 Ends with a (1, 1) convolution layer with 1 filter.
+Model Architecture: An input layer + 3 hidden convolution layers with kernel_size=(3, 3) and 16 filters in each layer.
+			Ends with a (1, 1) convolution layer with 1 filter.
 
-Initial run
