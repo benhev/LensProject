@@ -4,12 +4,17 @@ from tensorflow.keras.models import Sequential
 from tensorflow.keras.layers import Conv2D  # , Dense, Dropout, Flatten, MaxPool2D
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
 from os.path import isdir, isfile
-from random import shuffle
 from pathlib import Path
 
 
 # from os import listdir
 # import time
+
+def npy_get_shape(file):
+    with open(file, 'rb') as f:
+        _, _ = np.lib.format.read_magic(f)
+        shape, _, _ = np.lib.format.read_array_header_1_0(f)
+    return shape
 
 
 def read_npy_chunk(filename, start_row, num_rows):
@@ -78,13 +83,14 @@ class LensSequence(tf.keras.utils.Sequence):
         batch_x = read_npy_chunk(filename=self.x, start_row=idx, num_rows=self.batch_size)
         batch_y = read_npy_chunk(filename=self.y, start_row=idx, num_rows=self.batch_size)
 
-        batch = list(zip(batch_x, batch_y))
-        shuffle(batch)
+        # batch = list(zip(batch_x, batch_y))
+        # shuffle(batch)
+        perm = np.random.permutation(len(batch_x))
 
-        batch_x = np.array([item[0] for item in batch])
-        batch_y = np.array([item[1] for item in batch])
+        # batch_x = np.array([item[0] for item in batch])
+        # batch_y = np.array([item[1] for item in batch])
 
-        return batch_x, batch_y
+        return batch_x[perm], batch_y[perm]
 
 
 # def time_convert(seconds):
@@ -143,23 +149,13 @@ if __name__ == '__main__':
         print('Validation label path:')
         label_validation = input()
 
-    with open(input_training, 'rb') as f:
-        _, _ = np.lib.format.read_magic(f)
-        shape_x, _, _ = np.lib.format.read_array_header_1_0(f)
+    shape_x = npy_get_shape(input_training)
+    shape_y = npy_get_shape(label_training)
+    shape_x_val = npy_get_shape(input_validation)
+    shape_y_val = npy_get_shape(label_validation)
 
-    with open(label_training, 'rb') as f:
-        _, _ = np.lib.format.read_magic(f)
-        shape_y, _, _ = np.lib.format.read_array_header_1_0(f)
-    with open(input_validation, 'rb') as f:
-        _, _ = np.lib.format.read_magic(f)
-        shape_x_val, _, _ = np.lib.format.read_array_header_1_0(f)
-
-    with open(label_validation, 'rb') as f:
-        _, _ = np.lib.format.read_magic(f)
-        shape_y_val, _, _ = np.lib.format.read_array_header_1_0(f)
-
-    assert shape_x[:-1] == shape_y
-    assert shape_x_val[:-1] == shape_y_val
+    assert shape_x == shape_y
+    assert shape_x_val == shape_y_val
     NUMSAMPLE = shape_x[0]
     NUMVAL = shape_x_val[0]
     input_shape = shape_x[1:]
@@ -218,10 +214,12 @@ if __name__ == '__main__':
     model = Sequential()
 
     model.add(
-        Conv2D(size_conv_layers, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same'))
+        Conv2D(size_conv_layers, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
+               kernel_initializer='he_normal'))
     # model.add(MaxPool2D(pool_size=(2, 2),padding='same'))
     for i in range(num_conv_layers):
-        model.add(Conv2D(size_conv_layers, kernel_size=kernel_size, activation='relu', padding='same'))
+        model.add(Conv2D(size_conv_layers, kernel_size=kernel_size, activation='relu', padding='same',
+                         kernel_initializer='he_normal'))
         # model.add(MaxPool2D(pool_size=(2, 2),padding='same'))
 
     # model.add(Dropout(0.25))
@@ -230,8 +228,11 @@ if __name__ == '__main__':
     # model.add(Dropout(0.5))
     # model.add(Dense(num_classes, activation='softmax'))
 
-    model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same'))
+    model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same', kernel_initializer='he_normal'))
     model.compile(loss=loss_func, optimizer='Adadelta', metrics=['accuracy'])
+
+    with open(f'models/{NAME}/summary.txt', 'wt') as file:
+        model.summary(print_fn=lambda x:file.write(x+'\n'))
 
     model.fit(train_sequence, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=test_sequence,
               callbacks=[tb, mcp, mbst, redlr])
