@@ -1,23 +1,83 @@
+import os
 import numpy as np
 import tensorflow as tf
+# import tensorflow.keras.callbacks
 from tensorflow.keras.models import Sequential
-from tensorflow.keras.layers import Conv2D  # , Dense, Dropout, Flatten, MaxPool2D
-from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau
-from os.path import isdir, isfile
+from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
+from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
 from pathlib import Path
+from os.path import isdir, isfile
+import time
 
 
 # from os import listdir
-# import time
 
-def npy_get_shape(file):
+class TimeHistory(Callback):
+    def __init__(self, name):
+        self.name = name
+        super().__init__()
+
+    def on_train_begin(self, logs={}):
+        self.epoch = 0
+        with open(f'models/{self.name}/model.txt', 'at') as file:
+            file.write('\n\n\nEpoch\t\t\tTime\n')
+            file.write('=' * 35 + '\n\n')
+
+    def on_epoch_begin(self, batch, logs={}):
+        self.epoch_time_start = time.time()
+        self.epoch += 1
+
+    def on_epoch_end(self, batch, logs={}):
+        with open(f'models/{self.name}/model.txt', 'at') as file:
+            file.write(f'{self.epoch}\t\t\t{time_convert(time.time() - self.epoch_time_start)}\n')
+
+
+class LensSequence(tf.keras.utils.Sequence):
+
+    def __init__(self, x_set, y_set, batch_size):
+        self.x, self.y = x_set, y_set
+        self.batch_size = batch_size
+
+    def __len__(self):
+        with open(self.x, 'rb') as fhandle:
+            _, _ = np.lib.format.read_magic(fhandle)
+            shape_x, _, _ = np.lib.format.read_array_header_1_0(fhandle)
+
+        with open(self.y, 'rb') as fhandle:
+            _, _ = np.lib.format.read_magic(fhandle)
+            shape_y, _, _ = np.lib.format.read_array_header_1_0(fhandle)
+        assert shape_x[0] == shape_y[0]
+        return int(np.ceil(shape_x[0] / self.batch_size))
+
+    def __getitem__(self, idx):
+        batch_x = read_npy_chunk(filename=self.x, start_row=idx, num_rows=self.batch_size)
+        batch_y = read_npy_chunk(filename=self.y, start_row=idx, num_rows=self.batch_size)
+
+        # batch = list(zip(batch_x, batch_y))
+        # shuffle(batch)
+        perm = np.random.permutation(len(batch_x))
+
+        # batch_x = np.array([item[0] for item in batch])
+        # batch_y = np.array([item[1] for item in batch])
+
+        return batch_x[perm], batch_y[perm]
+
+
+def npy_get_shape(file: str):
     with open(file, 'rb') as f:
         _, _ = np.lib.format.read_magic(f)
         shape, _, _ = np.lib.format.read_array_header_1_0(f)
     return shape
 
 
-def read_npy_chunk(filename, start_row, num_rows):
+def get_file(text: str = 'Input path:'):
+    user_ans = input(text)
+    while not isfile(user_ans):
+        user_ans = input(f'File does not exist!\n {text}')
+    return user_ans
+
+
+def read_npy_chunk(filename: str, start_row, num_rows):
     """
     Reads a partial array (contiguous chunk along the first
     axis) from an NPY file.
@@ -62,93 +122,87 @@ def read_npy_chunk(filename, start_row, num_rows):
         return flat.reshape((-1,) + shape[1:])
 
 
-class LensSequence(tf.keras.utils.Sequence):
+def create_model(loss_func, name: str, kernel_size=(3, 3), pool_size=(2, 2), input_shape=(100, 100, 1)):
+    # size_conv_layers = kwargs['size_conv_layers']
+    # kernel_size = kwargs['kernel_size']
+    # input_shape = kwargs['input_shape']
+    # num_conv_layers = kwargs['num_conv_layers']
+    # loss_func = kwargs['loss_func']
+    # name = kwargs['name']
 
-    def __init__(self, x_set, y_set, batch_size):
-        self.x, self.y = x_set, y_set
-        self.batch_size = batch_size
+    model = Sequential(name=name)
 
-    def __len__(self):
-        with open(self.x, 'rb') as fhandle:
-            _, _ = np.lib.format.read_magic(fhandle)
-            shape_x, _, _ = np.lib.format.read_array_header_1_0(fhandle)
+    model.add(Conv2D(16, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
+                     kernel_initializer='he_normal'))
+    model.add(MaxPool2D(pool_size=pool_size, padding='same'))
 
-        with open(self.y, 'rb') as fhandle:
-            _, _ = np.lib.format.read_magic(fhandle)
-            shape_y, _, _ = np.lib.format.read_array_header_1_0(fhandle)
-        assert shape_x[0] == shape_y[0]
-        return int(np.ceil(shape_x[0] / self.batch_size))
+    model.add(Conv2D(32, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
+    model.add(MaxPool2D(pool_size=pool_size, padding='same'))
 
-    def __getitem__(self, idx):
-        batch_x = read_npy_chunk(filename=self.x, start_row=idx, num_rows=self.batch_size)
-        batch_y = read_npy_chunk(filename=self.y, start_row=idx, num_rows=self.batch_size)
+    model.add(Conv2D(64, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
+    # model.add(Dropout(0.5))
+    model.add(Conv2D(64, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
+    model.add(UpSampling2D(size=pool_size))
 
-        # batch = list(zip(batch_x, batch_y))
-        # shuffle(batch)
-        perm = np.random.permutation(len(batch_x))
+    model.add(Conv2D(32, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
+    model.add(UpSampling2D(size=pool_size))
 
-        # batch_x = np.array([item[0] for item in batch])
-        # batch_y = np.array([item[1] for item in batch])
+    model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same', kernel_initializer='he_normal'))
+    model.compile(loss=loss_func, optimizer='Adadelta', metrics=['accuracy'])
 
-        return batch_x[perm], batch_y[perm]
+    try:
+        with open(f'models/{name}/summary.txt', 'wt') as file:
+            model.summary(print_fn=lambda x: file.write(x + '\n'))
+    except FileNotFoundError:
+        print(f'Directory not found. Defaulting to current working directory at {os.getcwd()}.')
+        with open(f'{name} summary.txt', 'wt') as file:
+            model.summary(print_fn=lambda x: file.write(x + '\n'))
+
+    return model
 
 
-# def time_convert(seconds):
-#     hrs = str(np.floor(seconds / 3600).astype('int'))
-#     seconds = np.mod(seconds, 3600)
-#     mins = str(np.floor(seconds / 60).astype('int'))
-#     seconds = str(np.mod(seconds, 60).astype('int'))
-#     if len(hrs) == 1:
-#         hrs = f'0{hrs}'
-#     if len(mins) == 1:
-#         mins = f'0{mins}'
-#     if len(seconds) == 1:
-#         seconds = f'0{seconds}'
-#     return ':'.join([hrs, mins, seconds])
+def time_convert(seconds):
+    hrs = str(np.floor(seconds / 3600).astype('int'))
+    seconds = np.mod(seconds, 3600)
+    mins = str(np.floor(seconds / 60).astype('int'))
+    seconds = str(np.mod(seconds, 60).astype('int'))
+    if len(hrs) == 1:
+        hrs = f'0{hrs}'
+    if len(mins) == 1:
+        mins = f'0{mins}'
+    if len(seconds) == 1:
+        seconds = f'0{seconds}'
 
-if __name__ == '__main__':
+    return ':'.join([hrs, mins, seconds])
 
+
+def main():
     ### Model Parameters ###
 
-    batch_size = 20
-    epochs = 10
-    num_conv_layers = 3
-    size_conv_layers = 16
+    batch_size = int(input('Batch size: '))
+    epochs = int(input('Number of epochs: '))
+    # num_conv_layers = input('Number of hidden Conv2D layers: ')
+    # size_conv_layers = input('Size of Conv2D layers: ')
     kernel_size = (3, 3)
+    pool_size = (2, 2)
     loss_func = tf.keras.losses.mse
 
-    print('Training input path:')
-    input_training = input()
+    # input_training = get_file(text='Training input path:')
+    # label_training = get_file(text='Training label path:')
+    # input_validation = get_file(text='Validation input path:')
+    # label_validation = get_file(text='Validation label path:')
 
-    while not isfile(input_training):
-        print('File does not exist!')
-        print('Training input path:')
-        input_training = input()
+    # input_training = 'input_validation.npy'
+    # label_training = 'FIXED_label_validation.npy'
+    # input_validation = 'input_validation.npy'
+    # label_validation = 'FIXED_label_validation.npy'
 
-    print('Training label path:')
-    label_training = input()
+    input_training = 'input_training.npy'
+    label_training = 'FIXED_label_training.npy'
+    input_validation = 'input_validation.npy'
+    label_validation = 'FIXED_label_validation.npy'
 
-    while not isfile(label_training):
-        print('File does not exist!')
-        print('Training label path:')
-        label_training = input()
-
-    print('Validation input path:')
-    input_validation = input()
-
-    while not isfile(input_validation):
-        print('File does not exist!')
-        print('Validation input path:')
-        input_validation = input()
-
-    print('Validation label path:')
-    label_validation = input()
-
-    while not isfile(label_validation):
-        print('File does not exist!')
-        print('Validation label path:')
-        label_validation = input()
-
+    ### validation of test and training set sizes
     shape_x = npy_get_shape(input_training)
     shape_y = npy_get_shape(label_training)
     shape_x_val = npy_get_shape(input_validation)
@@ -164,12 +218,15 @@ if __name__ == '__main__':
 
     ### Naming the model and creating the model directory ###
 
-    print('Model version:')
-    ver = input()
+    ver = input('Model version:')
+    while not ver.isdigit():
+        ver = input('Improper format. Expected integer.\nModel version:')
+
     NAME = f'Lens_CNN_v{ver}'
     while isdir(f'models/{NAME}'):
-        print('Model version exists. Enter different version:')
-        ver = input()
+        ver = input('Model version exists.\nEnter different version:')
+        while not ver.isdigit():
+            ver = input('Improper format. Expected integer.\nModel version:')
         NAME = f'Lens_CNN_v{ver}'
     Path(f'models/{NAME}').mkdir()
     print('Creating log file.')
@@ -181,10 +238,12 @@ if __name__ == '__main__':
         file.write(f'Batch size: {batch_size}\n')
         file.write(f'Number of Epochs: {epochs}\n')
         file.write(f'Loss Function: {loss_func.__name__}\n')
-        file.write(
-            f'Model Architecture: An input layer + {num_conv_layers} hidden convolution layers with kernel_size={kernel_size} and {size_conv_layers} filters in each layer.\n\t\tEnds with a {(1, 1)} convolution layer with {1} filter.\n\n')
-        print('Additional Comments')
-        file.write(input())
+        file.write(f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n')
+        file.write(f'Training input file:{input_training}\n')
+        file.write(f'Training label file:{label_training}\n')
+        file.write(f'Validation input file:{input_validation}\n')
+        file.write(f'Validation label file:{label_validation}\n\n')
+        file.write(input('Additional Comments:'))
 
     ### End directory creation ###
 
@@ -193,48 +252,31 @@ if __name__ == '__main__':
     ### Callbacks ###
 
     tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
-    mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1)  # Model Checkpoint
+    mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1,
+                          save_weights_only=False)  # Model Checkpoint
     mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit.h5', monitor='val_loss',
-                           save_best_only=True, verbose=1)  # Best Model Checkpoint
+                           save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
     redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
                               min_delta=1e-4)  # Adaptive Learning Rate
+    tlog = TimeHistory(name=NAME)
     ### End Callbacks ###
 
-    # (x_train, y_train), (x_test, y_test) = import_data(directory=training_dir, stack=10000, img_shape=(100, 100))
-    #
-    # x_train = tf.keras.utils.normalize(x_train, axis=1)
-    # x_test = tf.keras.utils.normalize(x_test, axis=1)
-
-    train_sequence = LensSequence(x_set=input_training, y_set=label_training, batch_size=batch_size)
-    test_sequence = LensSequence(x_set=input_validation, y_set=label_validation, batch_size=batch_size)
+    train_sequence = LensSequence(x_set=input_training, y_set=label_training,
+                                  batch_size=batch_size)  # initialize a training sequence
+    test_sequence = LensSequence(x_set=input_validation, y_set=label_validation,
+                                 batch_size=batch_size)  # initialize a validation sequence
 
     ### MODEL ###
 
-    model = Sequential()
+    model = create_model(name=NAME, loss_func=loss_func, kernel_size=kernel_size, input_shape=input_shape,
+                         pool_size=pool_size)
 
-    model.add(
-        Conv2D(size_conv_layers, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
-               kernel_initializer='he_normal'))
-    # model.add(MaxPool2D(pool_size=(2, 2),padding='same'))
-    for i in range(num_conv_layers):
-        model.add(Conv2D(size_conv_layers, kernel_size=kernel_size, activation='relu', padding='same',
-                         kernel_initializer='he_normal'))
-        # model.add(MaxPool2D(pool_size=(2, 2),padding='same'))
+    history = model.fit(train_sequence, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=test_sequence,
+                        callbacks=[tb, mcp, mbst, redlr, tlog])
 
-    # model.add(Dropout(0.25))
-    # model.add(Flatten())
-    # model.add(Dense(128, activation='relu'))
-    # model.add(Dropout(0.5))
-    # model.add(Dense(num_classes, activation='softmax'))
+    print(f'{NAME} has finished training sequence.')
 
-    model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same', kernel_initializer='he_normal'))
-    model.compile(loss=loss_func, optimizer='Adadelta', metrics=['accuracy'])
 
-    with open(f'models/{NAME}/summary.txt', 'wt') as file:
-        model.summary(print_fn=lambda x:file.write(x+'\n'))
-
-    model.fit(train_sequence, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=test_sequence,
-              callbacks=[tb, mcp, mbst, redlr])
-
-    print('The model has successfully trained.')
+if __name__ == '__main__':
+    main()
