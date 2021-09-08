@@ -1,0 +1,28 @@
+Model Lens_CNN_v3
+90000 instances of 100x100 images with 1 color channels validated against 10000 test samples.
+Batch size: 50
+Number of Epochs: 10
+Loss Function: mean_squared_error
+Conv. kernel size: (3, 3)
+Max and UpSampling pool size:(2, 2)
+Training input file:input_training.npy
+Training label file:FIXED_label_training.npy
+Validation input file:input_validation.npy
+Validation label file:FIXED_label_validation.npy
+
+First run of the new architecture
+
+
+Epoch			Time
+===================================
+
+1			00:34:52
+2			00:34:07
+3			00:34:02
+4			00:34:37
+5			00:33:51
+6			00:33:50
+7			00:33:50
+8			00:34:04
+9			00:33:41
+10			00:33:49

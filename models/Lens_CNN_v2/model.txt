@@ -1,0 +1,9 @@
+Model Lens_CNN_v2
+90000 instances of 100x100 images with 1 color channels validated against 10000 test samples.
+Batch size: 20
+Number of Epochs: 10
+Loss Function: mean_squared_error
+Model Architecture: An input layer + 3 hidden convolution layers with kernel_size=(3, 3) and 16 filters in each layer.
+		Ends with a (1, 1) convolution layer with 1 filter.
+
+Second run, fixed label shape, added kernel_initialization='he_normal'
