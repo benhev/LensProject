@@ -1,0 +1,39 @@
+Model Lens_CNN_v4
+Initial training sequence performed on 10/09/2021 at 00:16:36.
+10000 instances of 100x100 images with 1 color channels validated against 10000 test samples.
+Batch size: 50
+Number of Epochs: 2
+Loss Function: mean_squared_error
+Conv. kernel size: (3, 3)
+Max and UpSampling pool size:(2, 2)
+Training input file:input_validation.npy
+Training label file:FIXED_label_validation.npy
+Validation input file:input_validation.npy
+Validation label file:FIXED_label_validation.npy
+Callbacks: Epoch Timing, TensorBoard, Epoch Checkpoint, Best Checkpoint
+
+comments
+
+
+------------------------------
+Additional training sequence performed on 10/09/2021 at 00:57:46
+10000 instances of 100x100 images with 1 color channels validated against 10000 test samples.
+Batch size: 60
+Initial Epoch: 2
+Number of Epochs: 2 (for a total of 4 epochs).
+Training input file:input_validation.npy
+Training label file:FIXED_label_validation.npy
+Validation input file:input_validation.npy
+Validation label file:FIXED_label_validation.npy
+Callbacks: Epoch Timing, TensorBoard, Epoch Checkpoint, Best Checkpoint
+
+second run
+
+	Epoch			Time
+=============================================
+
+	1			00:05:02
+	2			00:05:09
+---------------------------------------------
+	3			00:05:00
+	4			00:05:20

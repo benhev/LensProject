@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import tensorflow as tf
-# import tensorflow.keras.callbacks
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
@@ -9,21 +8,25 @@ from pathlib import Path
 from os.path import isdir, isfile
 import time
 from datetime import datetime
-from pickle import dump
+from json import dump
 
 
 # from os import listdir
 
 class TimeHistory(Callback):
-    def __init__(self, name):
+    def __init__(self, name, initial_epoch):
         self.name = name
+        self.epoch = initial_epoch
         super().__init__()
 
     def on_train_begin(self, logs={}):
-        self.epoch = 0
+        # self.epoch = 0
         with open(f'models/{self.name}/model.txt', 'at') as file:
-            file.write('\n\n\nEpoch\t\t\tTime\n')
-            file.write('=' * 35 + '\n\n')
+            if not self.epoch:
+                file.write('\n\n\n\tEpoch\t\t\tTime\n')
+                file.write('=' * 45 + '\n')
+            else:
+                file.write('-' * 45 + '\n')
 
     def on_epoch_begin(self, batch, logs={}):
         self.epoch_time_start = time.time()
@@ -31,7 +34,7 @@ class TimeHistory(Callback):
 
     def on_epoch_end(self, batch, logs={}):
         with open(f'models/{self.name}/model.txt', 'at') as file:
-            file.write(f'{self.epoch}\t\t\t{time_convert(time.time() - self.epoch_time_start)}\n')
+            file.write(f'\t{self.epoch}\t\t\t{time_convert(time.time() - self.epoch_time_start)}\n')
 
 
 class LensSequence(tf.keras.utils.Sequence):
@@ -233,8 +236,7 @@ def main():
 
     ### End Model Parameters ###
 
-    ### Naming the model and creating the model directory ###
-
+    ### Identifying the model ###
     create = input('(L)oad/(C)reate model? ')
     while not (isletter(create, 'c') or isletter(create, 'l')):
         create = input('Unexpected response. l/c ?')
@@ -247,6 +249,7 @@ def main():
     NAME = f'Lens_CNN_v{ver}'
 
     if create:
+        ### Creating the model directory ###
         while isdir(f'models/{NAME}'):
             ver = input('Model version exists.\nEnter different version:')
             while not ver.isdigit():
@@ -254,70 +257,48 @@ def main():
             NAME = f'Lens_CNN_v{ver}'
         Path(f'models/{NAME}').mkdir()
         print('Preparing log file.')
-        lst = [f'Model {NAME}\n initial training sequence performed on {DATE} at {TIME}',
+        lst = [f'Model {NAME}\nInitial training sequence performed on {DATE} at {TIME}.\n',
                f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
                f'Batch size: {batch_size}\n', f'Number of Epochs: {epochs}\n', f'Loss Function: {loss_func.__name__}\n',
                f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n',
                f'Training input file:{input_training}\n', f'Training label file:{label_training}\n',
-               f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n\n',
-               input('Additional Comments:')]
+               f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n']
         temp = []
-
-        # file.write(f'Model {NAME}\n initial training sequence performed on {DATE} at {TIME}')
-        # file.write(
-        #     f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n')
-        # file.write(f'Batch size: {batch_size}\n')
-        # file.write(f'Number of Epochs: {epochs}\n')
-        # file.write(f'Loss Function: {loss_func.__name__}\n')
-        # file.write(f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n')
-        # file.write(f'Training input file:{input_training}\n')
-        # file.write(f'Training label file:{label_training}\n')
-        # file.write(f'Validation input file:{input_validation}\n')
-        # file.write(f'Validation label file:{label_validation}\n\n')
-        # file.write(input('Additional Comments:'))
 
         ### End directory creation ###
 
         print(f'Building model {NAME}.')
         model = create_model(name=NAME, loss_func=loss_func, kernel_size=kernel_size, input_shape=input_shape,
                              pool_size=pool_size)
-    else:
+    else: #Load file
         while not isdir(f'models/{NAME}'):
             ver = input('Model not found.\nEnter existing version:')
             while not ver.isdigit():
                 ver = input('Improper format. Expected integer.\nModel version:')
             NAME = f'Lens_CNN_v{ver}'
 
-        model_to_load = input('Load (B)est/(C)heckpoint?')
-        while not (isletter(model_to_load, 'c') or isletter(model_to_load, 'b')):
-            model_to_load = input('Unexpected response. b/c ?')
-        model_to_load = isletter(model_to_load, 'b')
-        if model_to_load:
-            model_to_load = f'models/{NAME}/BestFit.h5'
-        else:
-            model_to_load = f'models/{NAME}/Checkpoint.h5'
+        model_to_load = f'models/{NAME}/Checkpoint.h5'
 
         print('Preparing log file.')
-
+        init_epoch = []
         with open(f'models/{NAME}/model.txt', 'rt') as file:
             lst = file.read().splitlines(True)
-            for i in range(len(lst)):
-                if 'Epoch\t\t\tTime' in lst[i]:
-                    ind = i - 2
-                if 'Number of Epochs' in lst[i]:
-                    init_epoch = i
+        for i in range(len(lst)):
+            if 'Epoch\t\t\tTime' in lst[i]:
+                ind = i - 2
+            if 'Number of Epochs' in lst[i]:
+                init_epoch.append(i)
+        _ = 0
+        for i in init_epoch:
+            _ += int(lst[i].split()[-1])
+        init_epoch = _
 
-        init_epoch = int(lst[init_epoch].split()[-1])
         temp = ['\n\n' + '-' * 30 + '\n', f'Additional training sequence performed on {DATE} at {TIME}\n',
                 f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
                 f'Batch size: {batch_size}\n', f'Initial Epoch: {init_epoch}\n',
-                f'Number of Epochs: {epochs} (for a total of {epochs + init_epoch} epochs).\n',
+                f'Number of Epochs: {epochs}\n',
                 f'Training input file:{input_training}\n', f'Training label file:{label_training}\n',
-                f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n\n',
-                input('Additional Comments:')]
-
-        for line, i in zip(temp, range(ind, ind + len(temp))):
-            lst.insert(i, line)
+                f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n']
 
         print(f'Loading model {NAME}.')
         model = load_model(model_to_load)
@@ -329,7 +310,7 @@ def main():
     mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1,
                           save_weights_only=False)  # Model Checkpoint
 
-    mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit_{now}.h5', monitor='val_loss',
+    mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit_{DATE.replace("/", "-")}.h5', monitor='val_loss',
                            save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
 
     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
@@ -337,46 +318,50 @@ def main():
     redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
                               min_delta=1e-4)  # Adaptive Learning Rate
 
-    tlog = TimeHistory(name=NAME)
+    tlog = TimeHistory(name=NAME, initial_epoch=init_epoch)
 
     cb_names = {'tb': 'TensorBoard',
                 'mcp': 'Epoch Checkpoint',
                 'mbst': 'Best Checkpoint',
                 'estop': 'Early Stopping',
-                'redlr': 'Reduce LR on Plateau',
-                'tlog': 'Epoch Timing (custom)'}
-
+                'redlr': 'Reduce LR on Plateau'}
     cb_dict = {'tb': tb,
                'mcp': mcp,
                'mbst': mbst,
                'estop': estop,
-               'redlr': redlr,
-               'tlog': tlog}
+               'redlr': redlr}
 
-    callbacks = []
-    cb_temp = []
+    callbacks = [tlog]
+    cb_temp = ['Epoch Timing']
     prompt = f'Callbacks to utilize. Options:\n' + '-' * 60 + '\n' + '\n'.join([f'{i[0]} -> {i[1]}' for i in
-                                                                                cb_names.items()]) + '\nq -> Exit\n' + '-' * 60 + '\nWrong inputs will yield no callbacks, use the correct case.'
+                                                                                cb_names.items()]) + '\nq -> Exit\n' + '-' * 60 + '\nWrong inputs will yield no callbacks, use the correct case.\n'
 
     flag = input(prompt)
-    while not isletter(flag, 'q') or len(callbacks) == len(cb_dict):
+
+    while not (isletter(flag, 'q') or len(callbacks) == len(cb_dict)):
         try:
             callbacks.append(cb_dict[flag])
             cb_temp.append(cb_names[flag])
         except KeyError:
             pass
-        flag = input('Add another? (q) to exit callback selection.')
-    temp.append('Callbacks: ' + ', '.join(cb_temp))
-
+        flag = input('Add another? (q) to exit callback selection.\n')
+    temp.append('Callbacks: ' + ', '.join(cb_temp) + '\n\n')
+    temp.append(input('Additional Comments:'))
     train_sequence = LensSequence(x_set=input_training, y_set=label_training,
                                   batch_size=batch_size)  # initialize a training sequence
     test_sequence = LensSequence(x_set=input_validation, y_set=label_validation,
                                  batch_size=batch_size)  # initialize a validation sequence
 
     ### MODEL ###
-    print('Writing logs to file')
+    print('Writing logs to file.')
+    if create:
+        lst.extend(temp)
+    else:
+        for line, i in zip(temp, range(ind, ind + len(temp))):
+            lst.insert(i, line)
     with open(f'models/{NAME}/model.txt', 'wt') as file:
         file.writelines(lst)
+
     history = model.fit(train_sequence,
                         batch_size=batch_size,
                         initial_epoch=init_epoch,
@@ -384,8 +369,8 @@ def main():
                         verbose=1,
                         validation_data=test_sequence,
                         callbacks=callbacks)
-    with open(f'models/{NAME}/history_{now}.pickle', 'xb') as file:
-        dump(history, file)
+    with open(f'models/{NAME}/history_{DATE.replace("/", "-")}.json', 'xb') as file:
+        dump(history.history, file, indent="")
     print(f'{NAME} has finished training sequence.')
 
 
