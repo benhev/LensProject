@@ -2,12 +2,14 @@ import os
 import numpy as np
 import tensorflow as tf
 # import tensorflow.keras.callbacks
-from tensorflow.keras.models import Sequential
+from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
 from pathlib import Path
 from os.path import isdir, isfile
 import time
+from datetime import datetime
+from pickle import dump
 
 
 # from os import listdir
@@ -176,9 +178,24 @@ def time_convert(seconds):
     return ':'.join([hrs, mins, seconds])
 
 
-def main():
-    ### Model Parameters ###
+def isletter(tst: str, let: str = None):
+    if len(tst) != 1:
+        return False
+    elif let is None:
+        return tst.isalpha()
+    else:
+        assert len(let) == 1
+        if let.islower():
+            return tst == let or ord(tst) == ord(let) - 32
+        else:
+            return tst == let or ord(tst) == ord(let) + 32
 
+
+def main():
+    now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+    DATE, TIME = now.split()
+    ### Model Parameters ###
+    init_epoch = 0
     batch_size = int(input('Batch size: '))
     epochs = int(input('Number of epochs: '))
     # num_conv_layers = input('Number of hidden Conv2D layers: ')
@@ -192,15 +209,15 @@ def main():
     # input_validation = get_file(text='Validation input path:')
     # label_validation = get_file(text='Validation label path:')
 
-    # input_training = 'input_validation.npy'
-    # label_training = 'FIXED_label_validation.npy'
-    # input_validation = 'input_validation.npy'
-    # label_validation = 'FIXED_label_validation.npy'
-
-    input_training = 'input_training.npy'
-    label_training = 'FIXED_label_training.npy'
+    input_training = 'input_validation.npy'
+    label_training = 'FIXED_label_validation.npy'
     input_validation = 'input_validation.npy'
     label_validation = 'FIXED_label_validation.npy'
+
+    # input_training = 'input_training.npy'
+    # label_training = 'FIXED_label_training.npy'
+    # input_validation = 'input_validation.npy'
+    # label_validation = 'FIXED_label_validation.npy'
 
     ### validation of test and training set sizes
     shape_x = npy_get_shape(input_training)
@@ -218,49 +235,138 @@ def main():
 
     ### Naming the model and creating the model directory ###
 
+    create = input('(L)oad/(C)reate model? ')
+    while not (isletter(create, 'c') or isletter(create, 'l')):
+        create = input('Unexpected response. l/c ?')
+    create = isletter(create, 'c')
+
     ver = input('Model version:')
     while not ver.isdigit():
         ver = input('Improper format. Expected integer.\nModel version:')
 
     NAME = f'Lens_CNN_v{ver}'
-    while isdir(f'models/{NAME}'):
-        ver = input('Model version exists.\nEnter different version:')
-        while not ver.isdigit():
-            ver = input('Improper format. Expected integer.\nModel version:')
-        NAME = f'Lens_CNN_v{ver}'
-    Path(f'models/{NAME}').mkdir()
-    print('Creating log file.')
 
-    with open(f'models/{NAME}/model.txt', 'wt') as file:
-        file.write(f'Model {NAME}\n')
-        file.write(
-            f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n')
-        file.write(f'Batch size: {batch_size}\n')
-        file.write(f'Number of Epochs: {epochs}\n')
-        file.write(f'Loss Function: {loss_func.__name__}\n')
-        file.write(f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n')
-        file.write(f'Training input file:{input_training}\n')
-        file.write(f'Training label file:{label_training}\n')
-        file.write(f'Validation input file:{input_validation}\n')
-        file.write(f'Validation label file:{label_validation}\n\n')
-        file.write(input('Additional Comments:'))
+    if create:
+        while isdir(f'models/{NAME}'):
+            ver = input('Model version exists.\nEnter different version:')
+            while not ver.isdigit():
+                ver = input('Improper format. Expected integer.\nModel version:')
+            NAME = f'Lens_CNN_v{ver}'
+        Path(f'models/{NAME}').mkdir()
+        print('Preparing log file.')
+        lst = [f'Model {NAME}\n initial training sequence performed on {DATE} at {TIME}',
+               f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
+               f'Batch size: {batch_size}\n', f'Number of Epochs: {epochs}\n', f'Loss Function: {loss_func.__name__}\n',
+               f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n',
+               f'Training input file:{input_training}\n', f'Training label file:{label_training}\n',
+               f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n\n',
+               input('Additional Comments:')]
+        temp = []
 
-    ### End directory creation ###
+        # file.write(f'Model {NAME}\n initial training sequence performed on {DATE} at {TIME}')
+        # file.write(
+        #     f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n')
+        # file.write(f'Batch size: {batch_size}\n')
+        # file.write(f'Number of Epochs: {epochs}\n')
+        # file.write(f'Loss Function: {loss_func.__name__}\n')
+        # file.write(f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n')
+        # file.write(f'Training input file:{input_training}\n')
+        # file.write(f'Training label file:{label_training}\n')
+        # file.write(f'Validation input file:{input_validation}\n')
+        # file.write(f'Validation label file:{label_validation}\n\n')
+        # file.write(input('Additional Comments:'))
 
-    print(f'Building model {NAME}')
+        ### End directory creation ###
+
+        print(f'Building model {NAME}.')
+        model = create_model(name=NAME, loss_func=loss_func, kernel_size=kernel_size, input_shape=input_shape,
+                             pool_size=pool_size)
+    else:
+        while not isdir(f'models/{NAME}'):
+            ver = input('Model not found.\nEnter existing version:')
+            while not ver.isdigit():
+                ver = input('Improper format. Expected integer.\nModel version:')
+            NAME = f'Lens_CNN_v{ver}'
+
+        model_to_load = input('Load (B)est/(C)heckpoint?')
+        while not (isletter(model_to_load, 'c') or isletter(model_to_load, 'b')):
+            model_to_load = input('Unexpected response. b/c ?')
+        model_to_load = isletter(model_to_load, 'b')
+        if model_to_load:
+            model_to_load = f'models/{NAME}/BestFit.h5'
+        else:
+            model_to_load = f'models/{NAME}/Checkpoint.h5'
+
+        print('Preparing log file.')
+
+        with open(f'models/{NAME}/model.txt', 'rt') as file:
+            lst = file.read().splitlines(True)
+            for i in range(len(lst)):
+                if 'Epoch\t\t\tTime' in lst[i]:
+                    ind = i - 2
+                if 'Number of Epochs' in lst[i]:
+                    init_epoch = i
+
+        init_epoch = int(lst[init_epoch].split()[-1])
+        temp = ['\n\n' + '-' * 30 + '\n', f'Additional training sequence performed on {DATE} at {TIME}\n',
+                f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
+                f'Batch size: {batch_size}\n', f'Initial Epoch: {init_epoch}\n',
+                f'Number of Epochs: {epochs} (for a total of {epochs + init_epoch} epochs).\n',
+                f'Training input file:{input_training}\n', f'Training label file:{label_training}\n',
+                f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n\n',
+                input('Additional Comments:')]
+
+        for line, i in zip(temp, range(ind, ind + len(temp))):
+            lst.insert(i, line)
+
+        print(f'Loading model {NAME}.')
+        model = load_model(model_to_load)
 
     ### Callbacks ###
 
     tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
+
     mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1,
                           save_weights_only=False)  # Model Checkpoint
-    mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit.h5', monitor='val_loss',
+
+    mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit_{now}.h5', monitor='val_loss',
                            save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
+
     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
+
     redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
                               min_delta=1e-4)  # Adaptive Learning Rate
+
     tlog = TimeHistory(name=NAME)
-    ### End Callbacks ###
+
+    cb_names = {'tb': 'TensorBoard',
+                'mcp': 'Epoch Checkpoint',
+                'mbst': 'Best Checkpoint',
+                'estop': 'Early Stopping',
+                'redlr': 'Reduce LR on Plateau',
+                'tlog': 'Epoch Timing (custom)'}
+
+    cb_dict = {'tb': tb,
+               'mcp': mcp,
+               'mbst': mbst,
+               'estop': estop,
+               'redlr': redlr,
+               'tlog': tlog}
+
+    callbacks = []
+    cb_temp = []
+    prompt = f'Callbacks to utilize. Options:\n' + '-' * 60 + '\n' + '\n'.join([f'{i[0]} -> {i[1]}' for i in
+                                                                                cb_names.items()]) + '\nq -> Exit\n' + '-' * 60 + '\nWrong inputs will yield no callbacks, use the correct case.'
+
+    flag = input(prompt)
+    while not isletter(flag, 'q') or len(callbacks) == len(cb_dict):
+        try:
+            callbacks.append(cb_dict[flag])
+            cb_temp.append(cb_names[flag])
+        except KeyError:
+            pass
+        flag = input('Add another? (q) to exit callback selection.')
+    temp.append('Callbacks: ' + ', '.join(cb_temp))
 
     train_sequence = LensSequence(x_set=input_training, y_set=label_training,
                                   batch_size=batch_size)  # initialize a training sequence
@@ -268,13 +374,18 @@ def main():
                                  batch_size=batch_size)  # initialize a validation sequence
 
     ### MODEL ###
-
-    model = create_model(name=NAME, loss_func=loss_func, kernel_size=kernel_size, input_shape=input_shape,
-                         pool_size=pool_size)
-
-    history = model.fit(train_sequence, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=test_sequence,
-                        callbacks=[tb, mcp, mbst, redlr, tlog])
-
+    print('Writing logs to file')
+    with open(f'models/{NAME}/model.txt', 'wt') as file:
+        file.writelines(lst)
+    history = model.fit(train_sequence,
+                        batch_size=batch_size,
+                        initial_epoch=init_epoch,
+                        epochs=epochs + init_epoch,
+                        verbose=1,
+                        validation_data=test_sequence,
+                        callbacks=callbacks)
+    with open(f'models/{NAME}/history_{now}.pickle', 'xb') as file:
+        dump(history, file)
     print(f'{NAME} has finished training sequence.')
 
 
