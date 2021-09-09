@@ -293,7 +293,7 @@ def main():
             _ += int(lst[i].split()[-1])
         init_epoch = _
 
-        temp = ['\n\n' + '-' * 30 + '\n', f'Additional training sequence performed on {DATE} at {TIME}\n',
+        temp = ['\n\n' + '-' * 30 + '\n', f'Additional training sequence initiated on {DATE} at {TIME}\n',
                 f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
                 f'Batch size: {batch_size}\n', f'Initial Epoch: {init_epoch}\n',
                 f'Number of Epochs: {epochs}\n',
