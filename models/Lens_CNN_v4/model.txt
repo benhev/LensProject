@@ -29,6 +29,20 @@ Callbacks: Epoch Timing, TensorBoard, Epoch Checkpoint, Best Checkpoint
 
 second run
 
+------------------------------
+Additional training sequence performed on 10/09/2021 at 01:15:27
+10000 instances of 100x100 images with 1 color channels validated against 10000 test samples.
+Batch size: 70
+Initial Epoch: 4
+Number of Epochs: 3
+Training input file:input_validation.npy
+Training label file:FIXED_label_validation.npy
+Validation input file:input_validation.npy
+Validation label file:FIXED_label_validation.npy
+Callbacks: Epoch Timing, TensorBoard, Epoch Checkpoint, Best Checkpoint
+
+third run
+
 	Epoch			Time
 =============================================
 
@@ -37,3 +51,7 @@ second run
 ---------------------------------------------
 	3			00:05:00
 	4			00:05:20
+---------------------------------------------
+	5			00:05:12
+	6			00:07:09
+	7			00:07:32

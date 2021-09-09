@@ -8,7 +8,7 @@ from pathlib import Path
 from os.path import isdir, isfile
 import time
 from datetime import datetime
-from json import dump
+from pickle import dump
 
 
 # from os import listdir
@@ -285,7 +285,7 @@ def main():
             lst = file.read().splitlines(True)
         for i in range(len(lst)):
             if 'Epoch\t\t\tTime' in lst[i]:
-                ind = i - 2
+                ind = i - 1
             if 'Number of Epochs' in lst[i]:
                 init_epoch.append(i)
         _ = 0
@@ -370,7 +370,7 @@ def main():
                         validation_data=test_sequence,
                         callbacks=callbacks)
     with open(f'models/{NAME}/history_{DATE.replace("/", "-")}.json', 'xb') as file:
-        dump(history.history, file, indent="")
+        dump(history.history, file)
     print(f'{NAME} has finished training sequence.')
 
 
