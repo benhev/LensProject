@@ -379,7 +379,6 @@ def main():
             lst.insert(i, line)
     with open(f'models/{NAME}/model.txt', 'wt') as file:
         file.writelines(lst)
-    return
     history = model.fit(train_sequence,
                         batch_size=batch_size,
                         initial_epoch=init_epoch,
