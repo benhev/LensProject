@@ -13,6 +13,21 @@ Validation label file:FIXED_label_validation.npy
 First run of the new architecture
 
 
+
+------------------------------
+Additional training sequence initiated on 10/09/2021 at 00:42:26
+90000 instances of 100x100 images with 1 color channels validated against 10000 test samples.
+Batch size: 60
+Initial Epoch: 10
+Number of Epochs: 5
+Training input file:input_training.npy
+Training label file:FIXED_label_training.npy
+Validation input file:input_validation.npy
+Validation label file:FIXED_label_validation.npy
+Callbacks: Epoch Timing, TensorBoard, Epoch Checkpoint, Best Checkpoint
+
+First run on colab
+
 Epoch			Time
 ===================================
 
@@ -26,3 +41,9 @@ Epoch			Time
 8			00:34:04
 9			00:33:41
 10			00:33:49
+---------------------------------------------
+	11			00:11:11
+	12			00:09:58
+	13			00:09:15
+	14			00:08:14
+	15			00:07:20
