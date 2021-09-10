@@ -194,6 +194,42 @@ def isletter(tst: str, let: str = None):
             return tst == let or ord(tst) == ord(let) + 32
 
 
+def cb_menu(cb_names: dict):
+    return f'Select callbacks to utilize. Note: time logging is on by default and cannot be turned off as it is necessary for epoch timing.\nOptions:\n' + '-' * 60 + '\n' + '\n'.join(
+        [f'{i[0]} -> {i[1]}' for i in
+         cb_names.items()]) + '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are case-sensitive.\n'
+
+
+def create_log(batch_size, epochs, numsample, numval, input_training: str, input_validation: str,
+               label_training: str, label_validation: str, input_shape=(100, 100, 1), kernel_size=(3, 3),
+               pool_size=(2, 2), loss_func=None, first_run=False, name: str = None, init_epoch: int = None):
+    date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
+    if first_run and loss_func is not None and name is not None:
+        temp = [f'Model {name}\n',
+                f'Loss Function: {loss_func.__name__}\n',
+                f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n',
+                '=' * 100 + '\n',
+                f'Initial training sequence started on {date} at {tm}.\n']
+    else:
+        temp = ['\n\n' + '-' * 30 + '\n',
+                f'Additional training sequence initiated on {date} at {tm}\n']
+
+    temp.extend([
+        f'{numsample} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {numval} test samples.\n',
+        f'Batch size: {batch_size}\n'])
+    if not first_run and init_epoch is not None:
+        temp.extend([f'Initial Epoch: {init_epoch}\n'])
+    elif not first_run and init_epoch is None:
+        raise ValueError('Cannot define log file when first_run=True and init_epoch undefined.')
+
+    temp.extend([f'Number of Epochs: {epochs}\n',
+                 f'Training input file:{input_training}\n',
+                 f'Training label file:{label_training}\n',
+                 f'Validation input file:{input_validation}\n',
+                 f'Validation label file:{label_validation}\n'])
+    return temp
+
+
 def main():
     now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
     DATE, TIME = now.split()
@@ -257,17 +293,11 @@ def main():
             NAME = f'Lens_CNN_v{ver}'
         Path(f'models/{NAME}').mkdir()
         print('Preparing log file.')
-        lst = [f'Model {NAME}\n',
-               f'Loss Function: {loss_func.__name__}\n',
-               f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n',
-               '=' * 100 + '\n',
-               f'Initial training sequence started on {DATE} at {TIME}.\n',
-               f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
-               f'Batch size: {batch_size}\n', f'Number of Epochs: {epochs}\n',
-               f'Training input file:{input_training}\n',
-               f'Training label file:{label_training}\n',
-               f'Validation input file:{input_validation}\n',
-               f'Validation label file:{label_validation}\n']
+        lst = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
+                         input_training=input_training, input_validation=input_validation,
+                         label_training=label_training, label_validation=label_validation, input_shape=input_shape,
+                         pool_size=pool_size, first_run=True, name=NAME, loss_func=loss_func)
+
         temp = []
 
         ### End directory creation ###
@@ -298,49 +328,46 @@ def main():
             _ += int(lst[i].split()[-1])
         init_epoch = _
 
-        temp = ['\n\n' + '-' * 30 + '\n', f'Additional training sequence initiated on {DATE} at {TIME}\n',
-                f'{NUMSAMPLE} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {NUMVAL} test samples.\n',
-                f'Batch size: {batch_size}\n', f'Initial Epoch: {init_epoch}\n',
-                f'Number of Epochs: {epochs}\n',
-                f'Training input file:{input_training}\n', f'Training label file:{label_training}\n',
-                f'Validation input file:{input_validation}\n', f'Validation label file:{label_validation}\n']
+        temp = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
+                          input_training=input_training, input_validation=input_validation,
+                          label_training=label_training, label_validation=label_validation, input_shape=input_shape,
+                          pool_size=pool_size, init_epoch=init_epoch)
 
         print(f'Loading model {NAME}.')
         model = load_model(model_to_load)
 
-    ### Callbacks ###
+        ### Callbacks ###
 
-    tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
+        tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
 
-    mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1,
-                          save_weights_only=False)  # Model Checkpoint
+        mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1,
+                              save_weights_only=False)  # Model Checkpoint
 
-    mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit_{DATE.replace("/", "-")}.h5', monitor='val_loss',
-                           save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
+        mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit_{DATE.replace("/", "-")}.h5', monitor='val_loss',
+                               save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
 
-    estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
+        estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
 
-    redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
-                              min_delta=1e-4)  # Adaptive Learning Rate
+        redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
+                                  min_delta=1e-4)  # Adaptive Learning Rate
 
-    tlog = TimeHistory(name=NAME, initial_epoch=init_epoch)
+        tlog = TimeHistory(name=NAME, initial_epoch=init_epoch)
 
-    cb_names = {'tb': 'TensorBoard',
-                'mcp': 'Epoch Checkpoint',
-                'mbst': 'Best Checkpoint',
-                'estop': 'Early Stopping',
-                'redlr': 'Reduce LR on Plateau'}
-    cb_dict = {'tb': tb,
-               'mcp': mcp,
-               'mbst': mbst,
-               'estop': estop,
-               'redlr': redlr}
+        cb_names = {'tb': 'TensorBoard',
+                    'mcp': 'Epoch Checkpoint',
+                    'mbst': 'Best Checkpoint',
+                    'estop': 'Early Stopping',
+                    'redlr': 'Reduce LR on Plateau'}
+        cb_dict = {'tb': tb,
+                   'mcp': mcp,
+                   'mbst': mbst,
+                   'estop': estop,
+                   'redlr': redlr}
 
-    callbacks = [tlog]
-    cb_temp = ['Epoch Timing']
+        callbacks = [tlog]
+        cb_temp = ['Epoch Timing']
 
-    flag = input(f'Select callbacks to utilize. Options:\n' + '-' * 60 + '\n' + '\n'.join([f'{i[0]} -> {i[1]}' for i in
-                                                                                           cb_names.items()]) + '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are case-sensitive.\n')
+        flag = input(cb_menu(cb_names))
 
     while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
         try:
@@ -356,9 +383,7 @@ def main():
             if not isletter(flag, 'p'):
                 print('Unrecognized key, no callback added.')
             else:
-                print(f'\nSelect callbacks to utilize. Options:\n' + '-' * 60 + '\n' + '\n'.join(
-                    [f'{i[0]} -> {i[1]}' for i in
-                     cb_names.items()]) + '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are case-sensitive.\n')
+                print(cb_menu(cb_names))
         if not len(callbacks) - 1 == len(cb_dict):
             flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n')
         else:
