@@ -13,6 +13,21 @@ from pickle import dump
 
 # from os import listdir
 
+class BestCheckpoint(ModelCheckpoint):
+    def _save_model(self, epoch, logs):
+        current = logs.get(self.monitor)
+        if self.monitor_op(current, self.best):
+            with open(os.path.dirname(self.filepath) + '/model.txt', 'rt') as file:
+                txt = file.readlines()
+            # for i, line in enumerate(txt):
+            #     if f'\t{epoch+1}\t\t\t' in line:
+            txt[-1] = txt[-1].removesuffix(
+                '\n') + f'\t\t\t{str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))} with {self.monitor}={current}\n'
+            with open(os.path.dirname(self.filepath) + '/model.txt', 'wt') as file:
+                file.writelines(txt)
+        super()._save_model(epoch=epoch, logs=logs)
+
+
 class TimeHistory(Callback):
     def __init__(self, name, initial_epoch):
         self.name = name
@@ -23,10 +38,10 @@ class TimeHistory(Callback):
         # self.epoch = 0
         with open(f'models/{self.name}/model.txt', 'at') as file:
             if not self.epoch:
-                file.write('\n\n\tEpoch\t\t\tTime\n')
-                file.write('=' * 45 + '\n')
+                file.write('\n\n\tEpoch\t\t\tTime\t\t\tBest\n')
+                file.write('=' * 85 + '\n')
             else:
-                file.write('-' * 45 + '\n')
+                file.write('-' * 85 + '\n')
 
     def on_epoch_begin(self, batch, logs={}):
         self.epoch_time_start = time.time()
@@ -230,33 +245,94 @@ def create_log(batch_size, epochs, numsample, numval, input_training: str, input
     return temp
 
 
+def isnat(test: str):
+    try:
+        return True if int(test) > 0 else False
+    except ValueError:
+        return False
+
+
+def get_cbs(name: str, init_epoch: int = 0):
+    date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
+
+    tb = TensorBoard(log_dir=f'logs/{name}')  # TensorBoard
+    mcp = ModelCheckpoint(filepath=f'models/{name}/Checkpoint.h5', save_freq='epoch', verbose=1,
+                          save_weights_only=False)  # Model Checkpoint
+    mbst = BestCheckpoint(filepath=f'models/{name}/BestFit_{date.replace("/", "-")}_{tm.replace(":", "")}.h5',
+                          monitor='val_loss',
+                          save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
+    estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
+    redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
+                              min_delta=1e-4)  # Adaptive Learning Rate
+
+    cb_names = {'tb': 'TensorBoard',
+                'mcp': 'Epoch Checkpoint',
+                'mbst': 'Best Checkpoint',
+                'estop': 'Early Stopping',
+                'redlr': 'Reduce LR on Plateau'}
+    cb_dict = {'tb': tb,
+               'mcp': mcp,
+               'mbst': mbst,
+               'estop': estop,
+               'redlr': redlr}
+
+    callbacks = [TimeHistory(name=name, initial_epoch=init_epoch)]
+    cb_temp = ['Epoch Timing']
+
+    flag = input(cb_menu(cb_names))
+
+    while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
+        try:
+            if not cb_dict[flag] in callbacks:
+                callbacks.append(cb_dict[flag])
+                cb_temp.append(cb_names[flag])
+                print(f'Added callback {cb_names[flag]}.\n{len(callbacks)}/{len(cb_dict) + 1} callbacks enabled.')
+                cb_names.pop(flag)
+            else:
+                print('Callback exists. Nothing added.')
+        except KeyError:
+            if not isletter(flag, 'p'):
+                print(f'Unrecognized key: {flag}, no callback added.')
+            else:
+                print(cb_menu(cb_names))
+        if not len(callbacks) - 1 == len(cb_dict):
+            flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n')
+        else:
+            print('All callbacks enabled. Proceeding.')
+
+    return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
+
+
 def main():
     now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
     DATE, TIME = now.split()
     ### Model Parameters ###
     init_epoch = 0
-    batch_size = int(input('Batch size: '))
-    epochs = int(input('Number of epochs: '))
+    batch_size = input('Batch size: ')
+    while not isnat(batch_size):
+        batch_size = int(input('Batch size should be a positive integer.\nBatch size: '))
+    batch_size = int(batch_size)
+
+    epochs = input('Number of epochs: ')
+    while not isnat(epochs):
+        epochs = int(input('Number of epochs should be a positive integer.\nNumber of epochs: '))
+    epochs = int(epochs)
+
     # num_conv_layers = input('Number of hidden Conv2D layers: ')
     # size_conv_layers = input('Size of Conv2D layers: ')
     kernel_size = (3, 3)
     pool_size = (2, 2)
     loss_func = tf.keras.losses.mse
 
-    input_training = get_file(text='Training input path:')
-    label_training = get_file(text='Training label path:')
-    input_validation = get_file(text='Validation input path:')
-    label_validation = get_file(text='Validation label path:')
+    # input_training = get_file(text='Training input path:')
+    # label_training = get_file(text='Training label path:')
+    # input_validation = get_file(text='Validation input path:')
+    # label_validation = get_file(text='Validation label path:')
 
-    # input_training = 'input_validation.npy'
-    # label_training = 'FIXED_label_validation.npy'
-    # input_validation = 'input_validation.npy'
-    # label_validation = 'FIXED_label_validation.npy'
-
-    # input_training = 'input_training.npy'
-    # label_training = 'FIXED_label_training.npy'
-    # input_validation = 'input_validation.npy'
-    # label_validation = 'FIXED_label_validation.npy'
+    input_training = 'TEST_input.npy'
+    label_training = 'TEST_label.npy'
+    input_validation = 'TEST_input.npy'
+    label_validation = 'TEST_label.npy'
 
     ### validation of test and training set sizes
     shape_x = npy_get_shape(input_training)
@@ -279,7 +355,7 @@ def main():
     create = isletter(create, 'c')
 
     ver = input('Model version:')
-    while not ver.isdigit():
+    while not isnat(ver):
         ver = input('Improper format. Expected integer.\nModel version:')
 
     NAME = f'Lens_CNN_v{ver}'
@@ -288,9 +364,10 @@ def main():
         ### Creating the model directory ###
         while isdir(f'models/{NAME}'):
             ver = input('Model version exists.\nEnter different version:')
-            while not ver.isdigit():
+            while not isnat(ver):
                 ver = input('Improper format. Expected integer.\nModel version:')
             NAME = f'Lens_CNN_v{ver}'
+        print('Creating model directory.')
         Path(f'models/{NAME}').mkdir()
         print('Preparing log file.')
         lst = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
@@ -308,7 +385,7 @@ def main():
     else:  # Load file
         while not isdir(f'models/{NAME}'):
             ver = input('Model not found.\nEnter existing version:')
-            while not ver.isdigit():
+            while not isnat(ver):
                 ver = input('Improper format. Expected integer.\nModel version:')
             NAME = f'Lens_CNN_v{ver}'
 
@@ -317,7 +394,7 @@ def main():
         print('Preparing log file.')
         init_epoch = []
         with open(f'models/{NAME}/model.txt', 'rt') as file:
-            lst = file.read().splitlines(True)
+            lst = file.readlines()
         for i in range(len(lst)):
             if 'Epoch\t\t\tTime' in lst[i]:
                 ind = i - 1
@@ -336,60 +413,13 @@ def main():
         print(f'Loading model {NAME}.')
         model = load_model(model_to_load)
 
-        ### Callbacks ###
+    ### Callbacks ###
 
-        tb = TensorBoard(log_dir=f'logs/{NAME}')  # TensorBoard
+    callbacks, message = get_cbs(name=NAME, init_epoch=init_epoch)
 
-        mcp = ModelCheckpoint(filepath=f'models/{NAME}/Checkpoint.h5', save_freq='epoch', verbose=1,
-                              save_weights_only=False)  # Model Checkpoint
-
-        mbst = ModelCheckpoint(filepath=f'models/{NAME}/BestFit_{DATE.replace("/", "-")}.h5', monitor='val_loss',
-                               save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
-
-        estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
-
-        redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
-                                  min_delta=1e-4)  # Adaptive Learning Rate
-
-        tlog = TimeHistory(name=NAME, initial_epoch=init_epoch)
-
-        cb_names = {'tb': 'TensorBoard',
-                    'mcp': 'Epoch Checkpoint',
-                    'mbst': 'Best Checkpoint',
-                    'estop': 'Early Stopping',
-                    'redlr': 'Reduce LR on Plateau'}
-        cb_dict = {'tb': tb,
-                   'mcp': mcp,
-                   'mbst': mbst,
-                   'estop': estop,
-                   'redlr': redlr}
-
-        callbacks = [tlog]
-        cb_temp = ['Epoch Timing']
-
-        flag = input(cb_menu(cb_names))
-
-    while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
-        try:
-            exist = cb_dict[flag] in callbacks
-            if not exist:
-                callbacks.append(cb_dict[flag])
-                cb_temp.append(cb_names[flag])
-                print(f'Added callback {cb_names[flag]}.\n{len(callbacks)}/{len(cb_dict) + 1} callbacks enabled.')
-                cb_names.pop(flag)
-            else:
-                print('Callback exists. Nothing added.')
-        except KeyError:
-            if not isletter(flag, 'p'):
-                print('Unrecognized key, no callback added.')
-            else:
-                print(cb_menu(cb_names))
-        if not len(callbacks) - 1 == len(cb_dict):
-            flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n')
-        else:
-            print('All callbacks enabled. Proceeding.')
-    temp.append('Callbacks: ' + ', '.join(cb_temp) + '\n\n')
+    temp.append(message)
     temp.append(input('Additional Comments:') + '\n')
+
     train_sequence = LensSequence(x_set=input_training, y_set=label_training,
                                   batch_size=batch_size)  # initialize a training sequence
     test_sequence = LensSequence(x_set=input_validation, y_set=label_validation,
@@ -411,7 +441,7 @@ def main():
                         verbose=1,
                         validation_data=test_sequence,
                         callbacks=callbacks)
-    with open(f'models/{NAME}/history_{DATE.replace("/", "-")}.json', 'xb') as file:
+    with open(f'models/{NAME}/history_{DATE.replace("/", "-")}_{TIME.replace(":", "")}.pickle', 'xb') as file:
         dump(history.history, file)
     print(f'{NAME} has finished training sequence.')
 
