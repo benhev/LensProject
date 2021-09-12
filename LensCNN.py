@@ -11,8 +11,6 @@ from datetime import datetime
 from pickle import dump
 
 
-# from os import listdir
-
 class BestCheckpoint(ModelCheckpoint):
     def _save_model(self, epoch, logs):
         current = logs.get(self.monitor)
@@ -70,8 +68,8 @@ class LensSequence(tf.keras.utils.Sequence):
         return int(np.ceil(shape_x[0] / self.batch_size))
 
     def __getitem__(self, idx):
-        batch_x = read_npy_chunk(filename=self.x, start_row=idx, num_rows=self.batch_size)
-        batch_y = read_npy_chunk(filename=self.y, start_row=idx, num_rows=self.batch_size)
+        batch_x = npy_read(filename=self.x, start_row=idx, num_rows=self.batch_size)
+        batch_y = npy_read(filename=self.y, start_row=idx, num_rows=self.batch_size)
 
         # batch = list(zip(batch_x, batch_y))
         # shuffle(batch)
@@ -91,40 +89,26 @@ def npy_get_shape(file: str):
 
 
 def get_file(text: str = 'Input path:'):
-    user_ans = input(text)
-    while not isfile(user_ans):
-        user_ans = input(f'File does not exist!\n {text}')
-    return user_ans
+    txt = input(text)
+    while not isfile(txt):
+        txt = input(f'File does not exist!\n {text}')
+    return txt
 
 
-def read_npy_chunk(filename: str, start_row, num_rows):
-    """
-    Reads a partial array (contiguous chunk along the first
-    axis) from an NPY file.
-    Parameters
-    ----------
-    filename : str
-        Name/path of the file from which to read.
-    start_row : int
-        The first row of the chunk you wish to read. Must be
-        less than the number of rows (elements along the first
-        axis) in the file.
-    num_rows : int
-        The number of rows you wish to read. The total of
-        `start_row + num_rows` must be less than the number of
-        rows (elements along the first axis) in the file.
-    Returns
-    -------
-    out : ndarray
-        Array with `out.shape[0] == num_rows`, equivalent to
-        `arr[start_row:start_row + num_rows]` if `arr` were
-        the entire array (note that the entire array is never
-        loaded into memory by this function).
-    """
+def npy_read(filename: str, start_row, num_rows):
+    '''
+
+    Modified from function originally written by:
+    __author__ = "David Warde-Farley"
+    __copyright__ = "Copyright (c) 2012 by " + __author__
+    __license__ = "3-clause BSD"
+    __email__ = "dwf@dwf.name"
+
+    '''
     assert start_row >= 0 and num_rows > 0
-    with open(filename, 'rb') as fhandle:
-        major, minor = np.lib.format.read_magic(fhandle)
-        shape, fortran, dtype = np.lib.format.read_array_header_1_0(fhandle)
+    with open(filename, 'rb') as file:
+        _, _ = np.lib.format.read_magic(file)
+        shape, fortran, dtype = np.lib.format.read_array_header_1_0(file)
         assert not fortran, "Fortran order arrays not supported"
         # Make sure the offsets aren't invalid.
         assert start_row < shape[0], (
@@ -136,9 +120,9 @@ def read_npy_chunk(filename: str, start_row, num_rows):
         # a product over all other dimensions.
         row_size = np.prod(shape[1:])
         start_byte = start_row * row_size * dtype.itemsize
-        fhandle.seek(start_byte, 1)
+        file.seek(start_byte, 1)
         n_items = row_size * num_rows
-        flat = np.fromfile(fhandle, count=n_items, dtype=dtype)
+        flat = np.fromfile(file, count=n_items, dtype=dtype)
         return flat.reshape((-1,) + shape[1:])
 
 
@@ -276,7 +260,9 @@ def get_cbs(name: str, init_epoch: int = 0):
                'estop': estop,
                'redlr': redlr}
 
-    callbacks = [TimeHistory(name=name, initial_epoch=init_epoch)]
+    # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly
+    callbacks = [TimeHistory(name=name,
+                             initial_epoch=init_epoch)]
     cb_temp = ['Epoch Timing']
 
     flag = input(cb_menu(cb_names))

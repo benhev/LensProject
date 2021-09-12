@@ -19,7 +19,7 @@ from lenstronomy.Data.psf import PSF
 from lenstronomy.ImSim.image_model import ImageModel
 import numpy as np
 # from lenstronomy.Util.param_util import phi_q2_ellipticity as qphi2el
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 import lzma
 import pickle
 
@@ -138,10 +138,10 @@ for i in range(stacks):
         # ax[1, _].matshow(brightness, origin='lower')
         # ax[2, _].matshow(np.log10(kappa), origin='lower')
 
-    data = [imdata, kdata]
-    filename = ''.join(['Training Set/lens_set_', str(i + 1), '.xz'])
-    with lzma.open(filename, mode='xb') as file:
-        pickle.dump(data, file)
+    # data = [imdata, kdata]
+    # filename = ''.join(['Training Set/lens_set_', str(i + 1), '.xz'])
+    # with lzma.open(filename, mode='xb') as file:
+    #     pickle.dump(data, file)
 
 # # Lens
 # lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
