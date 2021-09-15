@@ -12,27 +12,54 @@ from pickle import dump
 
 
 class BestCheckpoint(ModelCheckpoint):
-    def _save_model(self, epoch, logs):
+    '''
+    Reimplementation of ModelCheckpoint callback with save_best_only=True to write logs to file.
+    Identical to ModelCheckpoint otherwise.
+    '''
+
+    def _save_model(self, epoch, logs, batch=None):
+        '''
+        Internally used method.
+        An extension of existing method in ModelCheckpoint.
+        '''
         current = logs.get(self.monitor)
         if self.monitor_op(current, self.best):
             with open(os.path.dirname(self.filepath) + '/model.txt', 'rt') as file:
                 txt = file.readlines()
-            # for i, line in enumerate(txt):
-            #     if f'\t{epoch+1}\t\t\t' in line:
+            # When editing the last line of the logs file the assumption is that TimeHistory runs before
+            # BestCheckpoint as callbacks in the fitting method. For this to be true TimeHistory must ALWAYS precede
+            # BestCheckpoint in the callbacks list returned from get_cbs()!
+            # i.e callbacks=[...BestCheckpoint,...,TimeHistory,...] will NOT work and effectively log the previous epoch!
+            # No error will be thrown over this. Beware!
             txt[-1] = txt[-1].removesuffix(
                 '\n') + f'\t\t\t{str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))} with {self.monitor}={current}\n'
             with open(os.path.dirname(self.filepath) + '/model.txt', 'wt') as file:
                 file.writelines(txt)
-        super()._save_model(epoch=epoch, logs=logs)
+        # After saving logs to file, call the parent method to finish proper ModelCheckpoint execution.
+        super()._save_model(epoch=epoch, logs=logs, batch=batch)
 
 
 class TimeHistory(Callback):
+    '''
+    Logging of epoch timings.
+    '''
+
     def __init__(self, name, initial_epoch):
+        '''
+        Constructor
+        :param name: Model name.
+        :param initial_epoch: Starting epoch.
+        '''
         self.name = name
         self.epoch = initial_epoch
         super().__init__()
 
     def on_train_begin(self, logs={}):
+        '''
+        Internally used method.
+        Commands to be performed at beginning of training.
+        :param logs: Dict. Currently not in use.
+        '''
         # self.epoch = 0
         with open(f'models/{self.name}/model.txt', 'at') as file:
             if not self.epoch:
@@ -41,22 +68,49 @@ class TimeHistory(Callback):
             else:
                 file.write('-' * 85 + '\n')
 
-    def on_epoch_begin(self, batch, logs={}):
+    def on_epoch_begin(self, epoch, logs={}):
+        '''
+        Internally used method.
+        Commands to be performed at beginning of each epoch.
+        :param epoch: Integer, index of epoch.
+        :param logs: Dict. Currently not in use.
+        '''
         self.epoch_time_start = time.time()
         self.epoch += 1
 
-    def on_epoch_end(self, batch, logs={}):
+    def on_epoch_end(self, epoch, logs={}):
+        '''
+        Internally used method.
+        Commands to be perfoemd at the end of each epoch.
+        :param epoch: Integer, index of epoch.
+        :param logs: Dict. Currently not in use.
+        '''
         with open(f'models/{self.name}/model.txt', 'at') as file:
             file.write(f'\t{self.epoch}\t\t\t{time_convert(time.time() - self.epoch_time_start)}\n')
 
 
+# Data is too large to store in memory all at once
+# this sequence handles the input data in batches.
 class LensSequence(tf.keras.utils.Sequence):
+    '''
+    Keras data sequence which reads numpy files in chunks.
+    '''
 
     def __init__(self, x_set, y_set, batch_size):
+        '''
+        Constructor
+        :param x_set: Directory to input as *.npy file.
+        :param y_set: Directory to labels as *.npy file.
+        :param batch_size: Size of batches to be supplied to model.
+        '''
         self.x, self.y = x_set, y_set
         self.batch_size = batch_size
 
     def __len__(self):
+        '''
+        Return number of batches in sequence.
+        :return: Total number of batches in LensSequence.
+        '''
         with open(self.x, 'rb') as fhandle:
             _, _ = np.lib.format.read_magic(fhandle)
             shape_x, _, _ = np.lib.format.read_array_header_1_0(fhandle)
@@ -68,6 +122,11 @@ class LensSequence(tf.keras.utils.Sequence):
         return int(np.ceil(shape_x[0] / self.batch_size))
 
     def __getitem__(self, idx):
+        '''
+        Get a shuffled batch.
+        :param idx: Starting index.
+        :return: Numpy array.
+        '''
         batch_x = npy_read(filename=self.x, start_row=idx, num_rows=self.batch_size)
         batch_y = npy_read(filename=self.y, start_row=idx, num_rows=self.batch_size)
 
@@ -82,6 +141,11 @@ class LensSequence(tf.keras.utils.Sequence):
 
 
 def npy_get_shape(file: str):
+    '''
+    Return the shape of a numpy array stored in *.npy file as a numpy array.
+    :param file: File directory.
+    :return: Shape of stored numpy array as numpy array.
+    '''
     with open(file, 'rb') as f:
         _, _ = np.lib.format.read_magic(f)
         shape, _, _ = np.lib.format.read_array_header_1_0(f)
@@ -89,9 +153,14 @@ def npy_get_shape(file: str):
 
 
 def get_file(text: str = 'Input path:'):
+    '''
+    Function to ensure input exists as a file.
+    :param text: Prompt text.
+    :return: Directory to existing file.
+    '''
     txt = input(text)
     while not isfile(txt):
-        txt = input(f'File does not exist!\n {text}')
+        txt = input(f'File does not exist!\n{text}')
     return txt
 
 
@@ -104,6 +173,11 @@ def npy_read(filename: str, start_row, num_rows):
     __license__ = "3-clause BSD"
     __email__ = "dwf@dwf.name"
 
+    Reads chunks of data from a given numpy file.
+    :param filename: npy file to read.
+    :param start_row: Starting index.
+    :param num_rows: Number of rows to read.
+    :return: Numpy array.
     '''
     assert start_row >= 0 and num_rows > 0
     with open(filename, 'rb') as file:
@@ -126,14 +200,17 @@ def npy_read(filename: str, start_row, num_rows):
         return flat.reshape((-1,) + shape[1:])
 
 
+# This function defines the architecture, change it here.
 def create_model(loss_func, name: str, kernel_size=(3, 3), pool_size=(2, 2), input_shape=(100, 100, 1)):
-    # size_conv_layers = kwargs['size_conv_layers']
-    # kernel_size = kwargs['kernel_size']
-    # input_shape = kwargs['input_shape']
-    # num_conv_layers = kwargs['num_conv_layers']
-    # loss_func = kwargs['loss_func']
-    # name = kwargs['name']
-
+    '''
+    Creates a model according to the architecture defined inside.
+    :param loss_func: Loss function to use.
+    :param name: Model name.
+    :param kernel_size: Convolution kernel size, (3,3) unless otherwise specified.
+    :param pool_size: UpSampling and MaxPooling pool size, (2,2) unless otherwise specified.
+    :param input_shape: Input image shape, (100,100,1) unless otherwise specified.
+    :return: Sequetial Keras model built according to the specified architecture.
+    '''
     model = Sequential(name=name)
 
     model.add(Conv2D(16, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
@@ -166,6 +243,10 @@ def create_model(loss_func, name: str, kernel_size=(3, 3), pool_size=(2, 2), inp
 
 
 def time_convert(seconds):
+    '''
+    Convert time from seconds to regular hh:mm:ss format.
+    '''
+    # This function is necessary for time logging to function
     hrs = str(np.floor(seconds / 3600).astype('int'))
     seconds = np.mod(seconds, 3600)
     mins = str(np.floor(seconds / 60).astype('int'))
@@ -181,6 +262,9 @@ def time_convert(seconds):
 
 
 def isletter(tst: str, let: str = None):
+    '''
+    Checks if tst is a single letter. If let is supplied checks whether the letters match (case insensitive).
+    '''
     if len(tst) != 1:
         return False
     elif let is None:
@@ -194,6 +278,9 @@ def isletter(tst: str, let: str = None):
 
 
 def cb_menu(cb_names: dict):
+    '''
+    Prints callback menu from dictionary of names. Used in get_cbs()
+    '''
     return f'Select callbacks to utilize. Note: time logging is on by default and cannot be turned off as it is necessary for epoch timing.\nOptions:\n' + '-' * 60 + '\n' + '\n'.join(
         [f'{i[0]} -> {i[1]}' for i in
          cb_names.items()]) + '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are case-sensitive.\n'
@@ -202,6 +289,9 @@ def cb_menu(cb_names: dict):
 def create_log(batch_size, epochs, numsample, numval, input_training: str, input_validation: str,
                label_training: str, label_validation: str, input_shape=(100, 100, 1), kernel_size=(3, 3),
                pool_size=(2, 2), loss_func=None, first_run=False, name: str = None, init_epoch: int = None):
+    '''
+    Creates the log entry, whether for an existing file or for a first run
+    '''
     date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
     if first_run and loss_func is not None and name is not None:
         temp = [f'Model {name}\n',
@@ -210,7 +300,7 @@ def create_log(batch_size, epochs, numsample, numval, input_training: str, input
                 '=' * 100 + '\n',
                 f'Initial training sequence started on {date} at {tm}.\n']
     else:
-        temp = ['\n\n' + '-' * 30 + '\n',
+        temp = ['\n' + '-' * 50 + '\n',
                 f'Additional training sequence initiated on {date} at {tm}\n']
 
     temp.extend([
@@ -229,16 +319,27 @@ def create_log(batch_size, epochs, numsample, numval, input_training: str, input
     return temp
 
 
-def isnat(test: str):
+def isnat(test):
+    '''
+    Returns True if a number is an integer larger than 0 (Natural), and False otherwise.
+    '''
     try:
         return True if int(test) > 0 else False
     except ValueError:
         return False
 
 
+# Add callbacks to this function
 def get_cbs(name: str, init_epoch: int = 0):
+    '''
+    Construct a list of callbacks to be used in model.fit().
+    :param name: Model name (used to identify model in classes which save logs to file).
+    :param init_epoch: Starting epoch.
+    :return: List of keras callbacks.
+    '''
     date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
 
+    # 1/3 Add callbacks here
     tb = TensorBoard(log_dir=f'logs/{name}')  # TensorBoard
     mcp = ModelCheckpoint(filepath=f'models/{name}/Checkpoint.h5', save_freq='epoch', verbose=1,
                           save_weights_only=False)  # Model Checkpoint
@@ -248,7 +349,7 @@ def get_cbs(name: str, init_epoch: int = 0):
     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
     redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
                               min_delta=1e-4)  # Adaptive Learning Rate
-
+    # 2/3 Then assign an id and add the new callback to the dictionaries
     cb_names = {'tb': 'TensorBoard',
                 'mcp': 'Epoch Checkpoint',
                 'mbst': 'Best Checkpoint',
@@ -260,13 +361,17 @@ def get_cbs(name: str, init_epoch: int = 0):
                'estop': estop,
                'redlr': redlr}
 
-    # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly
+    # IMPORTANT NOTE:
+    # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly.
+    # It MUST precede BestCheckpoint in the list of callbacks. As it is currently, BestCheckpoint is always added after TimeHistory.
+    # No error will be thrown over this but it will seamlessly affect the log files, beware!
+    # (See comments in BestCheckpoint._save_model() method)
     callbacks = [TimeHistory(name=name,
                              initial_epoch=init_epoch)]
     cb_temp = ['Epoch Timing']
 
-    flag = input(cb_menu(cb_names))
-
+    flag = input(cb_menu(cb_names)).lower()
+    # 3/3 Finally, add an option to the menu using the assigned id from step 2
     while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
         try:
             if not cb_dict[flag] in callbacks:
@@ -282,7 +387,7 @@ def get_cbs(name: str, init_epoch: int = 0):
             else:
                 print(cb_menu(cb_names))
         if not len(callbacks) - 1 == len(cb_dict):
-            flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n')
+            flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n').lower()
         else:
             print('All callbacks enabled. Proceeding.')
 
@@ -293,19 +398,17 @@ def main():
     now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
     DATE, TIME = now.split()
     ### Model Parameters ###
-    init_epoch = 0
+    init_epoch = 0  # 0 means that the initial epoch is actually 1. This enumeration logic is pervasive in all functions which accept some form of init_epoch argument.
     batch_size = input('Batch size: ')
     while not isnat(batch_size):
-        batch_size = int(input('Batch size should be a positive integer.\nBatch size: '))
+        batch_size = input('Batch size should be a positive integer.\nBatch size: ')
     batch_size = int(batch_size)
 
     epochs = input('Number of epochs: ')
     while not isnat(epochs):
-        epochs = int(input('Number of epochs should be a positive integer.\nNumber of epochs: '))
+        epochs = input('Number of epochs should be a positive integer.\nNumber of epochs: ')
     epochs = int(epochs)
 
-    # num_conv_layers = input('Number of hidden Conv2D layers: ')
-    # size_conv_layers = input('Size of Conv2D layers: ')
     kernel_size = (3, 3)
     pool_size = (2, 2)
     loss_func = tf.keras.losses.mse
@@ -315,19 +418,20 @@ def main():
     # input_validation = get_file(text='Validation input path:')
     # label_validation = get_file(text='Validation label path:')
 
+    ### USED FOR TESTING. Smaller sets for faster epochs
     input_training = 'TEST_input.npy'
     label_training = 'TEST_label.npy'
     input_validation = 'TEST_input.npy'
     label_validation = 'TEST_label.npy'
 
-    ### validation of test and training set sizes
+    # validation of test and training set sizes
     shape_x = npy_get_shape(input_training)
     shape_y = npy_get_shape(label_training)
     shape_x_val = npy_get_shape(input_validation)
     shape_y_val = npy_get_shape(label_validation)
 
-    assert shape_x == shape_y
-    assert shape_x_val == shape_y_val
+    assert shape_x == shape_y, "Shapes of training input and labels must match!"
+    assert shape_x_val == shape_y_val, "Shapes of validation input and labels must match!"
     NUMSAMPLE = shape_x[0]
     NUMVAL = shape_x_val[0]
     input_shape = shape_x[1:]
@@ -343,6 +447,7 @@ def main():
     ver = input('Model version:')
     while not isnat(ver):
         ver = input('Improper format. Expected integer.\nModel version:')
+    ver = int(ver)
 
     NAME = f'Lens_CNN_v{ver}'
 
@@ -352,18 +457,20 @@ def main():
             ver = input('Model version exists.\nEnter different version:')
             while not isnat(ver):
                 ver = input('Improper format. Expected integer.\nModel version:')
+            ver = int(ver)
             NAME = f'Lens_CNN_v{ver}'
         print('Creating model directory.')
         Path(f'models/{NAME}').mkdir()
+        ### End directory creation ###
+
         print('Preparing log file.')
-        lst = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
+        log = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
                          input_training=input_training, input_validation=input_validation,
                          label_training=label_training, label_validation=label_validation, input_shape=input_shape,
                          pool_size=pool_size, first_run=True, name=NAME, loss_func=loss_func)
-
+        # temp is a list whose contents are to be appended to the log file.
+        # Mostly used in the model loading logging strategy.
         temp = []
-
-        ### End directory creation ###
 
         print(f'Building model {NAME}.')
         model = create_model(name=NAME, loss_func=loss_func, kernel_size=kernel_size, input_shape=input_shape,
@@ -373,23 +480,18 @@ def main():
             ver = input('Model not found.\nEnter existing version:')
             while not isnat(ver):
                 ver = input('Improper format. Expected integer.\nModel version:')
+            ver = int(ver)
             NAME = f'Lens_CNN_v{ver}'
-
         model_to_load = f'models/{NAME}/Checkpoint.h5'
-
         print('Preparing log file.')
-        init_epoch = []
+        # init_epoch = []
         with open(f'models/{NAME}/model.txt', 'rt') as file:
-            lst = file.readlines()
-        for i in range(len(lst)):
-            if 'Epoch\t\t\tTime' in lst[i]:
+            log = file.readlines()
+        for i in range(len(log)):
+            if 'Epoch\t\t\tTime' in log[i]:
                 ind = i - 1
-            if 'Number of Epochs' in lst[i]:
-                init_epoch.append(i)
-        _ = 0
-        for i in init_epoch:
-            _ += int(lst[i].split()[-1])
-        init_epoch = _
+            if 'Number of Epochs' in log[i]:
+                init_epoch += int(log[i].split()[-1])
 
         temp = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
                           input_training=input_training, input_validation=input_validation,
@@ -414,12 +516,12 @@ def main():
     ### MODEL ###
     print('Writing logs to file.')
     if create:
-        lst.extend(temp)
+        log.extend(temp)
     else:
         for line, i in zip(temp, range(ind, ind + len(temp))):
-            lst.insert(i, line)
+            log.insert(i, line)
     with open(f'models/{NAME}/model.txt', 'wt') as file:
-        file.writelines(lst)
+        file.writelines(log)
     history = model.fit(train_sequence,
                         batch_size=batch_size,
                         initial_epoch=init_epoch,
