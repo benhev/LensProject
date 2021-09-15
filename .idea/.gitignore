@@ -1,7 +1,7 @@
 # Default ignored files
 /shelf/
 /workspace.xml
-
+/NF/
 # Byte-compiled / optimized / DLL files
 __pycache__/
 */*/*/__pycache__/
