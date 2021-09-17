@@ -99,6 +99,9 @@ def file_read(directory):
 # The following constructs up to the loop environment are shared by all generated lensing instances
 deltapix = 0.05  # pixel resolution
 npix = 100
+save_dir = 'Training Set'
+stack_size = 10000
+stacks = 10
 kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
 # PSF
 kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
@@ -110,8 +113,7 @@ xgrid, ygrid = pixelGrid.pixel_coordinates
 
 # f, ax = plt.subplots(3, n, figsize=(8, 8))
 # with open('lens_test1.txt', mode='a') as file:.
-stack_size = 10000
-stacks = 10
+
 for i in range(stacks):
     data = []
     kdata = np.zeros((stack_size, npix, npix, 1))
@@ -138,10 +140,10 @@ for i in range(stacks):
         # ax[1, _].matshow(brightness, origin='lower')
         # ax[2, _].matshow(np.log10(kappa), origin='lower')
 
-    # data = [imdata, kdata]
-    # filename = ''.join(['Training Set/lens_set_', str(i + 1), '.xz'])
-    # with lzma.open(filename, mode='xb') as file:
-    #     pickle.dump(data, file)
+    data = [imdata, kdata]
+    filename = f'{save_dir}/lens_set_{str(i + 1)}.xz'
+    with lzma.open(filename, mode='xb') as file:
+        pickle.dump(data, file)
 
 # # Lens
 # lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
