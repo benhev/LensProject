@@ -1,16 +1,6 @@
-# # we can also add noise #
+# from lenstronomy.Util.param_util import phi_q2_ellipticity as qphi2el
+# import matplotlib.pyplot as plt
 # import lenstronomy.Util.image_util as image_util
-# exp_time = 100  # exposure time to quantify the Poisson noise level
-# background_rms = 0.1  # background rms value
-# poisson = image_util.add_poisson(image, exp_time=exp_time)
-# bkg = image_util.add_background(image, sigma_bkd=background_rms)
-# image_noisy = image + bkg + poisson
-#
-# f, axes = plt.subplots(1, 2, figsize=(8, 4), sharex=False, sharey=False)
-# axes[0].matshow(np.log10(image), origin='lower')
-# axes[1].matshow(np.log10(image_noisy), origin='lower')
-# f.tight_layout()
-# plt.show()
 
 from lenstronomy.LensModel.lens_model import LensModel
 from lenstronomy.LightModel.light_model import LightModel
@@ -18,8 +8,6 @@ from lenstronomy.Data.pixel_grid import PixelGrid
 from lenstronomy.Data.psf import PSF
 from lenstronomy.ImSim.image_model import ImageModel
 import numpy as np
-# from lenstronomy.Util.param_util import phi_q2_ellipticity as qphi2el
-# import matplotlib.pyplot as plt
 import lzma
 import pickle
 
@@ -98,8 +86,11 @@ def file_read(directory):
 # Constant constructs #
 # The following constructs up to the loop environment are shared by all generated lensing instances
 deltapix = 0.05  # pixel resolution
-npix = 100
+npix = 100  # image shape = (npix, npix, 1)
 save_dir = 'Training Set'
+# Generates stacks bunches of stack_size images.
+# stack_size is also the size of the np array initialized to store the images - has memory implications.
+# In a future update these numbers won't make a difference as all data will be appended to one numpy file.
 stack_size = 10000
 stacks = 10
 kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
@@ -111,8 +102,7 @@ kernel = psf.kernel_point_source
 pixelGrid = grid(dpix=deltapix, npix=npix, origin_ra=0, origin_dec=0)
 xgrid, ygrid = pixelGrid.pixel_coordinates
 
-# f, ax = plt.subplots(3, n, figsize=(8, 8))
-# with open('lens_test1.txt', mode='a') as file:.
+# We can add noise to images, see Lenstronomy documentation and examples.
 
 for i in range(stacks):
     data = []
@@ -141,28 +131,9 @@ for i in range(stacks):
         # ax[2, _].matshow(np.log10(kappa), origin='lower')
 
     data = [imdata, kdata]
+    # In a future update this should change to be saved as a numpy file.
+    # Numpy files load and save faster, while taking slightly more storage space.
     filename = f'{save_dir}/lens_set_{str(i + 1)}.xz'
     with lzma.open(filename, mode='xb') as file:
         pickle.dump(data, file)
-
-# # Lens
-# lensModel, kwargs_lens, centers, thetas = generate_lens(grid_class=pixelGrid)
-# # Source
-# lightModel, kwargs_light = light(grid_class=pixelGrid, lens_centers=centers, lens_thetas=thetas)
-# # Image Model
-# imageModel = ImageModel(data_class=pixelGrid, psf_class=psf, lens_model_class=lensModel,
-#                         source_model_class=lightModel,
-#                         lens_light_model_class=None, point_source_class=None, kwargs_numerics=kwargs_nums)
-# image = imageModel.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light, point_source_add=False,
-#                          lens_light_add=False)
-# kappa = lensModel.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens)
-#
-#
-# brightness = lightModel.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light)
-# f, ax = plt.subplots(1, 3, figsize=(8, 8))
-# ax[0].matshow(np.log10(kappa), origin='lower')
-# ax[1].matshow(image, origin='lower')
-# ax[2].matshow(brightness, origin='lower')
-#
-# f.tight_layout()
-# plt.show()
+    # In a future update a validation file can be separated from the training set at this stage
