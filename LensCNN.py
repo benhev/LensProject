@@ -413,16 +413,16 @@ def main():
     pool_size = (2, 2)
     loss_func = tf.keras.losses.mse
 
-    # input_training = get_file(text='Training input path:')
-    # label_training = get_file(text='Training label path:')
-    # input_validation = get_file(text='Validation input path:')
-    # label_validation = get_file(text='Validation label path:')
+    input_training = get_file(text='Training input path:')
+    label_training = get_file(text='Training label path:')
+    input_validation = get_file(text='Validation input path:')
+    label_validation = get_file(text='Validation label path:')
 
     ### USED FOR TESTING. Smaller sets for faster epochs
-    input_training = 'TEST_input.npy'
-    label_training = 'TEST_label.npy'
-    input_validation = 'TEST_input.npy'
-    label_validation = 'TEST_label.npy'
+    # input_training = 'TEST_input.npy'
+    # label_training = 'TEST_label.npy'
+    # input_validation = 'TEST_input.npy'
+    # label_validation = 'TEST_label.npy'
 
     # validation of test and training set sizes
     shape_x = npy_get_shape(input_training)
