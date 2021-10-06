@@ -23,7 +23,7 @@ kwargs_source = [kwargs_sersic]
 
 
 source_model_class = LightModel(source_model_list)
-
+brightness = util.array2image(source_model_class.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
 
 kwargs_sersic_lens = {'amp': 16, 'R_sersic': 0.6, 'n_sersic': 2, 'e1': -0.1, 'e2': 0.1, 'center_x': 0.05, 'center_y': 0}
 
