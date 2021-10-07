@@ -1,10 +1,9 @@
 # from lenstronomy.Util.param_util import phi_q2_ellipticity as qphi2el
-# import matplotlib.pyplot as plt
-from lenstronomy.Util.util import make_grid, array2image, make_grid_with_coordtransform
+# from lenstronomy.Data.imaging_data import ImageData
 import matplotlib.pyplot as plt
+from lenstronomy.Util.util import make_grid, array2image, make_grid_with_coordtransform
 from lenstronomy.LensModel.lens_model import LensModel
 from lenstronomy.LightModel.light_model import LightModel
-# from lenstronomy.Data.imaging_data import ImageData
 from lenstronomy.Data.pixel_grid import PixelGrid
 from lenstronomy.Data.psf import PSF
 from lenstronomy.ImSim.image_model import ImageModel
@@ -14,6 +13,7 @@ from pathlib import Path
 
 
 def npy_write(filename: str, start_row, arr, size=None):
+    # This function is a hack and not does not use documented behavior, though it works.
     assert start_row >= 0 and isinstance(arr, np.ndarray)
     num_rows = len(arr) if len(arr.shape) > 1 else 1
     if not isfile(filename):
@@ -107,8 +107,8 @@ def main():
     # Generates stacks bunches of stack_size images.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # In a future update these numbers won't make a difference as all data will be appended to one numpy file.
-    stack_size = 11  # 0000
-    stacks = 13  # 0
+    stack_size = 10000
+    stacks = 10
     val_split = 0.1
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
     # PSF
