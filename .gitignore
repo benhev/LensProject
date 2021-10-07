@@ -1,6 +1,7 @@
 # Byte-compiled / optimized / DLL files
 /__pycache__/
 /Old training/
+/Lensing examples/
 to do list.txt
 #*/*/*/__pycache__/
 #*/*/__pycache__/
