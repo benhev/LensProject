@@ -14,13 +14,6 @@ import numpy as np
 
 # import lzma
 # import pickle
-def dist_check(lens_center, prev_centers, range):
-    prev_centers = np.array(prev_centers)
-    # finish distance checking so two lenses are not too close together
-    for center in prev_centers:
-        if np.linalg.norm(center - lens_center) < range:
-            return True
-    return False
 
 
 def grid(dpix, npix, origin_ra, origin_dec):
@@ -36,18 +29,18 @@ def grid(dpix, npix, origin_ra, origin_dec):
 
 
 def generate_lens(grid_class, light_center):
-    num_of_lenses = np.random.randint(1, 4)
+    num_of_lenses = np.random.randint(2, 5)
     grid_len = len(grid_class.pixel_coordinates[0])
     margin = np.floor(grid_len / 5)
     light_center = np.array(light_center)
     kwargs = []
     centers = []
     for _ in range(num_of_lenses):
-        e1, e2 = np.random.uniform(-1 / 2, 1 / 2, 2)
+        e1, e2 = np.random.uniform(-0.5, 0.5, 2)
+        print(f'ellipticity #{_+1}={(e1,e2)}')
         theta = np.random.normal(loc=1, scale=0.01)
         center = np.array([np.inf, np.inf])
-        while np.linalg.norm(light_center - center) > 3 * theta or dist_check(lens_center=center, prev_centers=centers,
-                                                                               range=theta):
+        while np.linalg.norm(light_center - center) > 2.5 * theta:
             center = np.random.randint(margin, grid_len + 1 - margin, 2)
             center = np.around(grid_class.map_pix2coord(x=center[0], y=center[1]), decimals=1)
         print(f"Light Center {light_center}")
@@ -63,15 +56,10 @@ def light(grid_class):
     r, n = 1. / 2, 3 / 2
     grid_len = len(grid_class.pixel_coordinates[0])
     margin = np.floor(grid_len / 5)
-    # print('Grid Length:', grid_len)
-    # iterator = 0
     cx, cy = np.random.randint(margin, grid_len + 1 - margin, 2)
     cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=2)
-    # print('Iteration:', iterator)
-    # iterator += 1
     kwargs = [{'amp': 1, 'R_sersic': r, 'n_sersic': n, 'center_x': cx, 'center_y': cy}]
     model = LightModel(light_model_list=['SERSIC'])
-    # print('Light Center:', (cx, cy))
     return [model, kwargs, np.array([cx, cy])]
 
 
@@ -79,7 +67,7 @@ def main():
     # Constant constructs #
     # The following constructs up to the "for" block are shared by all generated lensing instances
     deltapix = 0.05  # size of pixel in angular coordinates
-    npix = 300  # image shape = (npix, npix, 1)
+    npix = 150  # image shape = (npix, npix, 1)
     save_dir = 'Training Set'
     # Generates stacks bunches of stack_size images.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.

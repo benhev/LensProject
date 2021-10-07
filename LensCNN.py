@@ -16,6 +16,7 @@ class BestCheckpoint(ModelCheckpoint):
     Reimplementation of ModelCheckpoint callback with save_best_only=True to write logs to file.
     Identical to ModelCheckpoint otherwise.
     '''
+
     # There is an issue with the signature of this method, for some reason it is dynamically called with an argument
     # which is undeclared (batch=None). Through trial and error I got this to work, it might require some tinkering if
     # tensorflow/keras is updated. This may also be an issue with conflicting definitions of the keras
@@ -200,6 +201,32 @@ def npy_read(filename: str, start_row, num_rows):
         n_items = row_size * num_rows
         flat = np.fromfile(file, count=n_items, dtype=dtype)
         return flat.reshape((-1,) + shape[1:])
+
+
+def npy_write(filename: str, start_row, arr):
+    assert start_row >= 0 and isinstance(arr, np.ndarray)
+    num_rows = len(arr) if len(arr.shape) > 1 else 1
+    assert num_rows > 0
+    with open(filename, 'rb+') as file:
+        _, _ = np.lib.format.read_magic(file)
+        shape, fortran, dtype = np.lib.format.read_array_header_1_0(file)
+        assert not fortran, "Fortran order arrays not supported"
+        # Make sure the offsets aren't invalid.
+        assert start_row < shape[0], (
+            'start_row is beyond end of file'
+        )
+        if len(arr.shape) > 1:
+            assert arr.shape[1:] == shape[1:]
+        else:
+            assert arr.shape == shape[1:]
+        assert start_row + num_rows <= shape[0]
+        # Get the number of elements in one 'row' by taking
+        # a product over all other dimensions.
+        row_size = np.prod(shape[1:])
+        start_byte = start_row * row_size * dtype.itemsize
+        file.seek(start_byte, 1)
+        arr.tofile(file)
+        return start_row+num_rows
 
 
 # This function defines the architecture, change it here.
