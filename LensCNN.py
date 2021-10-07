@@ -203,32 +203,6 @@ def npy_read(filename: str, start_row, num_rows):
         return flat.reshape((-1,) + shape[1:])
 
 
-def npy_write(filename: str, start_row, arr):
-    assert start_row >= 0 and isinstance(arr, np.ndarray)
-    num_rows = len(arr) if len(arr.shape) > 1 else 1
-    assert num_rows > 0
-    with open(filename, 'rb+') as file:
-        _, _ = np.lib.format.read_magic(file)
-        shape, fortran, dtype = np.lib.format.read_array_header_1_0(file)
-        assert not fortran, "Fortran order arrays not supported"
-        # Make sure the offsets aren't invalid.
-        assert start_row < shape[0], (
-            'start_row is beyond end of file'
-        )
-        if len(arr.shape) > 1:
-            assert arr.shape[1:] == shape[1:]
-        else:
-            assert arr.shape == shape[1:]
-        assert start_row + num_rows <= shape[0]
-        # Get the number of elements in one 'row' by taking
-        # a product over all other dimensions.
-        row_size = np.prod(shape[1:])
-        start_byte = start_row * row_size * dtype.itemsize
-        file.seek(start_byte, 1)
-        arr.tofile(file)
-        return start_row+num_rows
-
-
 # This function defines the architecture, change it here.
 def create_model(loss_func, name: str, kernel_size=(3, 3), pool_size=(2, 2), input_shape=(100, 100, 1)):
     '''
