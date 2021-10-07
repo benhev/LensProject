@@ -17,6 +17,10 @@ class BestCheckpoint(ModelCheckpoint):
     Identical to ModelCheckpoint otherwise.
     '''
 
+    # There is an issue with the signature of this method, for some reason it is dynamically called with an argument
+    # which is undeclared (batch=None). Through trial and error I got this to work, it might require some tinkering if
+    # tensorflow/keras is updated. This may also be an issue with conflicting definitions of the keras
+    # ModelCheckpoint class, once in the keras standalone package and another in the tensorflow.keras module
     def _save_model(self, epoch, logs, batch=None):
         '''
         Internally used method.
@@ -89,8 +93,7 @@ class TimeHistory(Callback):
             file.write(f'\t{self.epoch}\t\t\t{time_convert(time.time() - self.epoch_time_start)}\n')
 
 
-# Data is too large to store in memory all at once
-# this sequence handles the input data in batches.
+# Data is too large to store in memory all at once, this Sequence class handles the input data in batches.
 class LensSequence(tf.keras.utils.Sequence):
     '''
     Keras data sequence which reads numpy files in chunks.
