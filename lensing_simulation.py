@@ -109,8 +109,8 @@ def main():
     # Generates stacks bunches of stack_size images.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # In a future update these numbers won't make a difference as all data will be appended to one numpy file.
-    stack_size = 10000
-    stacks = 10
+    stack_size = 10  # 0000
+    stacks = 1  # 0
     val_split = 0.1
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
     # PSF
@@ -160,9 +160,9 @@ def main():
             subgs = gs[0].subgridspec(1, 3)
             ax = subgs.subplots()
 
-            image_ax,table_ax = gs.subplots()
+            image_ax, table_ax = gs.subplots()
             image_ax.axis('off')
-            fig.suptitle(f'Lens #{j+1}')
+            fig.suptitle(f'Lens #{j + 1}')
             for kwargs in kwargs_lens:
                 phi, q = el2qphi(kwargs['e1'], kwargs['e2'])
                 kwargs.update({'q': q, 'phi': phi})
@@ -182,15 +182,15 @@ def main():
             table_ax.axis('off')
             table_ax.title.set_text('Lens Parameters')
 
-            fig_size = fig.get_size_inches()
-            fig.set_size_inches(fig_size[0], fig_size[1] / 2)
             tbl = plt.table(cellText=np.around(table_data, decimals=2), colLabels=col_label, rowLabels=row_label,
                             loc='best')
             tbl.auto_set_font_size(False)
-            tbl.set_fontsize(14)
+            tbl.set_fontsize(12)
             table_ax.add_table(tbl)
-            # fig.savefig(f'example {_ + 1}.jpg')
-            plt.show()
+            # fig_size = fig.get_size_inches()
+            fig.set_size_inches(8, 8)
+            fig.savefig(f'example {j + 1}.jpg', bbox_inches='tight')
+            # plt.show()
         # The following is just a mechanism of separating the training from the validation sets by counting down the
         # number of instances to be generated
         # if num_train > 0:
