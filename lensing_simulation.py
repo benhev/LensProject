@@ -1,6 +1,8 @@
 # from lenstronomy.Util.param_util import phi_q2_ellipticity as qphi2el
+from lenstronomy.Util.param_util import ellipticity2phi_q as el2qphi
 # from lenstronomy.Data.imaging_data import ImageData
 import matplotlib.pyplot as plt
+from matplotlib import gridspec
 from lenstronomy.Util.util import make_grid, array2image, make_grid_with_coordtransform
 from lenstronomy.LensModel.lens_model import LensModel
 from lenstronomy.LightModel.light_model import LightModel
@@ -128,7 +130,7 @@ def main():
     for i in range(stacks):
         kdata = np.zeros((stack_size, npix, npix, 1))  # Container for kappa data
         imdata = np.zeros((stack_size, npix, npix, 1))  # Container for image data
-        for _ in range(stack_size):
+        for j in range(stack_size):
             # Light
             light_model, kwargs_light, light_center = light(grid_class=pixel_grid)
             # Lens
@@ -143,65 +145,89 @@ def main():
             kappa = array2image(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
             image = image.reshape(image.shape[0], image.shape[1], 1)  # Reshape to fit the expected input of tensorflow
             kappa = kappa.reshape(kappa.shape[0], kappa.shape[1], 1)
-            kdata[_] = kappa
-            imdata[_] = image
+            kdata[j] = kappa
+            imdata[j] = image
             # if we want we can add brightness plots
             # brightness is not implemented in saving but this can be done very quickly by adding a few lines
             # very similar to the commands saving imdata and kdata
-            # brightness = array2image(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
-
+            brightness = array2image(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
+            #
             # For simulation of images - mainly testing purposes
-            # data = [image, kappa, brightness]
-            # names = ['image', 'kappa', 'galaxy w/o lensing']
-            # fig, ax = plt.subplots(1, 3)
-            # for j in range(3):
-            #     if j == 1:
-            #         ax[j].imshow(np.log(data[j]))
-            #     else:
-            #         ax[j].matshow(data[j], extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
-            #     ax[j].title.set_text(names[j])
-            # fig_size = fig.get_size_inches()
-            # fig.set_size_inches(fig_size[0], fig_size[1] / 2)
+            data = [image, kappa, brightness]
+            names = ['Lensed Image', 'Convergence (log)', 'Galaxy w/o Lensing']
+            fig = plt.figure()
+            gs = gridspec.GridSpec(2, 1, figure=fig)
+            subgs = gs[0].subgridspec(1, 3)
+            ax = subgs.subplots()
+
+            image_ax,table_ax = gs.subplots()
+            image_ax.axis('off')
+            fig.suptitle(f'Lens #{j+1}')
+            for kwargs in kwargs_lens:
+                phi, q = el2qphi(kwargs['e1'], kwargs['e2'])
+                kwargs.update({'q': q, 'phi': phi})
+                for _ in ['e1', 'e2']:
+                    kwargs.pop(_)
+            table_data = list(map(lambda x: list(x.values()), kwargs_lens))
+            col_label = list(kwargs_lens[0].keys())
+            row_label = list(range(1, 1 + len(kwargs_lens)))
+
+            for k in range(3):
+                if k == 1:
+                    ax[k].imshow(np.log(data[k]), extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
+                else:
+                    ax[k].imshow(data[k], extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
+                ax[k].title.set_text(names[k])
+
+            table_ax.axis('off')
+            table_ax.title.set_text('Lens Parameters')
+
+            fig_size = fig.get_size_inches()
+            fig.set_size_inches(fig_size[0], fig_size[1] / 2)
+            tbl = plt.table(cellText=np.around(table_data, decimals=2), colLabels=col_label, rowLabels=row_label,
+                            loc='best')
+            tbl.auto_set_font_size(False)
+            tbl.set_fontsize(14)
+            table_ax.add_table(tbl)
             # fig.savefig(f'example {_ + 1}.jpg')
-            # plt.show()
+            plt.show()
         # The following is just a mechanism of separating the training from the validation sets by counting down the
         # number of instances to be generated
-        if num_train > 0:
-            if num_train >= stack_size:
-                # save all to training
-                # reduce num_train
-                train_inp_pos = npy_write(f'{save_dir}/training_input.npy', train_inp_pos, imdata, size=num_train)
-                train_lab_pos = npy_write(f'{save_dir}/training_label.npy', train_lab_pos, kdata, size=num_train)
-                num_train -= stack_size
-            else:
-                # save only remaining to training and rest to validation
-                # reduce num_train
-                # reduce num_val
-                train_inp_pos = npy_write(f'{save_dir}/training_input.npy', train_inp_pos, imdata[:num_train],
-                                          size=num_train)
-                train_lab_pos = npy_write(f'{save_dir}/training_label.npy', train_lab_pos, kdata[:num_train],
-                                          size=num_train)
-                if num_val >= stack_size - num_train:
-                    val_inp_pos = npy_write(f'{save_dir}/validation_input.npy', val_inp_pos, imdata[num_train:],
-                                            size=num_val)
-                    val_lab_pos = npy_write(f'{save_dir}/validation_label.npy', val_lab_pos, kdata[num_train:],
-                                            size=num_val)
-                    num_val -= stack_size - num_train
-                else:
-                    print('Warning! Too many instances generated.')
-                num_train -= num_train
-
-        elif num_val > 0:
-            if num_val >= stack_size:
-                # save all to validation
-                # reduce num_val
-                val_inp_pos = npy_write(f'{save_dir}/validation_input.npy', val_inp_pos, imdata, size=num_val)
-                val_lab_pos = npy_write(f'{save_dir}/validation_label.npy', val_lab_pos, kdata, size=num_val)
-                num_val -= stack_size
-            else:
-                print('Warning! Too many instances generated.')
-        elif num_val < 0:
-            raise ValueError(f'Negative num_val: num_val={num_val}')
+        # if num_train > 0:
+        #     if num_train >= stack_size:
+        #         # save all to training
+        #         # reduce num_train
+        #         train_inp_pos = npy_write(f'{save_dir}/training_input.npy', train_inp_pos, imdata, size=num_train)
+        #         train_lab_pos = npy_write(f'{save_dir}/training_label.npy', train_lab_pos, kdata, size=num_train)
+        #         num_train -= stack_size
+        #     else:
+        #         # save only remaining to training and rest to validation
+        #         # reduce num_train
+        #         # reduce num_val
+        #         train_inp_pos = npy_write(f'{save_dir}/training_input.npy', train_inp_pos, imdata[:num_train],
+        #                                   size=num_train)
+        #         train_lab_pos = npy_write(f'{save_dir}/training_label.npy', train_lab_pos, kdata[:num_train],
+        #                                   size=num_train)
+        #         if num_val >= stack_size - num_train:
+        #             val_inp_pos = npy_write(f'{save_dir}/validation_input.npy', val_inp_pos, imdata[num_train:],
+        #                                     size=num_val)
+        #             val_lab_pos = npy_write(f'{save_dir}/validation_label.npy', val_lab_pos, kdata[num_train:],
+        #                                     size=num_val)
+        #             num_val -= stack_size - num_train
+        #         else:
+        #             print('Warning! Too many instances generated.')
+        #         num_train -= num_train
+        # elif num_val > 0:
+        #     if num_val >= stack_size:
+        #         # save all to validation
+        #         # reduce num_val
+        #         val_inp_pos = npy_write(f'{save_dir}/validation_input.npy', val_inp_pos, imdata, size=num_val)
+        #         val_lab_pos = npy_write(f'{save_dir}/validation_label.npy', val_lab_pos, kdata, size=num_val)
+        #         num_val -= stack_size
+        #     else:
+        #         print('Warning! Too many instances generated.')
+        # elif num_val < 0:
+        #     raise ValueError(f'Negative num_val: num_val={num_val}')
 
 
 if __name__ == '__main__':
