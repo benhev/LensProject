@@ -80,7 +80,7 @@ def generate_lens(grid_class, light_center):
             center = np.around(grid_class.map_pix2coord(x=center[0], y=center[1]), decimals=1)
         # print(f'Center #{_ + 1}={center}')
         # centers.append(center)
-        temp_kwargs = {'center_x': center[0], 'center_y': center[1],'theta_E': theta, 'e1': e1, 'e2': e2}
+        temp_kwargs = {'center_x': center[0], 'center_y': center[1], 'theta_E': theta, 'e1': e1, 'e2': e2}
         kwargs.append(temp_kwargs)
     model = LensModel(lens_model_list=['SIE'] * num_of_lenses)
     return [model, kwargs]
@@ -97,10 +97,10 @@ def light(grid_class):
     return [model, kwargs, np.array([cx, cy])]
 
 
-def main():
+def main(deltapix=0.05):
     # Constant constructs #
     # The following constructs up to the "for" block are shared by all generated lensing instances
-    deltapix = 0.05  # size of pixel in angular coordinates
+    # deltapix = 0.05 # size of pixel in angular coordinates
     npix = 150  # image shape = (npix, npix, 1)
     save_dir = input('Input save directory:')
     while isdir(save_dir):
@@ -109,7 +109,7 @@ def main():
     # Generates stacks bunches of stack_size images.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # In a future update these numbers won't make a difference as all data will be appended to one numpy file.
-    stack_size = 1  # 0000
+    stack_size = 10  # 0000
     stacks = 1  # 0
     val_split = 0.1
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
@@ -162,7 +162,7 @@ def main():
 
             image_ax, table_ax = gs.subplots()
             image_ax.axis('off')
-            fig.suptitle(f'Lens #{j + 1}')
+            fig.suptitle(f'Lens #{j + 1}, deltaPix={deltapix}')
             for kwargs in kwargs_lens:
                 phi, q = el2qphi(kwargs['e1'], kwargs['e2'])
                 kwargs.update({'q': q, 'phi': phi})
@@ -189,8 +189,9 @@ def main():
             table_ax.add_table(tbl)
             # fig_size = fig.get_size_inches()
             fig.set_size_inches(8, 8)
-            # fig.savefig(f'example {j + 1}.jpg', bbox_inches='tight')
-            plt.show()
+            fig.savefig(f'Lensing Examples/{deltapix}/example {j + 1}.jpg', bbox_inches='tight')
+            # plt.show()
+            plt.close(fig)
         # The following is just a mechanism of separating the training from the validation sets by counting down the
         # number of instances to be generated
         # if num_train > 0:
