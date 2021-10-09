@@ -99,33 +99,89 @@ def generate_lens(grid_class, light_center):
     return [LensModel(lens_model_list=['SIE'] * num_of_lenses), kwargs]
 
 
-def light(grid_class):
-    r, n = 1. / 2, 3 / 2
+def contains(txt: str, substr: list):
+    for line in substr:
+        if not isinstance(line, str):
+            raise ValueError(f'{substr} is not a list of strings.')
+        if line.lower() in txt.lower():
+            return True
+    return False
+
+
+def sample_center(grid_class):
     grid_len = len(grid_class.pixel_coordinates[0])
     margin = np.floor(MARGIN_FRACTION * grid_len)
     cx, cy = np.random.randint(margin, grid_len + 1 - margin, 2)
     cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=2)
-    kwargs = [{'amp': 1, 'R_sersic': r, 'n_sersic': n, 'center_x': cx, 'center_y': cy}]
+    return np.array([cx, cy])
 
+
+def light(grid_class, r, n):
+    cx, cy = sample_center(grid_class)
+    kwargs = [{'amp': 1, 'R_sersic': r, 'n_sersic': n, 'center_x': cx, 'center_y': cy}]
     return [LightModel(light_model_list=['SERSIC']), kwargs, np.array([cx, cy])]
 
 
-def main():
-    # Constant constructs #
-    # The following constructs up to the "for" block are shared by all generated lensing instances
-    deltapix = 0.1  # size of pixel in angular coordinates
-    npix = 150  # image shape = (npix, npix, 1)
-    save_dir = input('Input save directory:')
-    while isdir(save_dir):
-        print('Directory exists!')
-        save_dir = input('Input save directory:')
-    # Generates stacks bunches of stack_size images.
-    # stack_size is also the size of the np array initialized to store the images - has memory implications.
-    # In a future update these numbers won't make a difference as all data will be appended to one numpy file.
-    stacks = 1  # 10
-    stack_size = 3  # 10000
-    val_split = 0.1
-    kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
+def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
+    fig = plt.figure()
+    gs = gridspec.GridSpec(2, 1, figure=fig)
+    subgs = gs[0].subgridspec(1, len(data))
+    ax = subgs.subplots()
+
+    image_ax, table_ax = gs.subplots()
+    image_ax.axis('off')
+    if lens_num is not None: fig.suptitle(f'Lens #{lens_num}')
+    for kwargs in kwargs_lens:
+        phi, q = el2phiq(kwargs['e1'], kwargs['e2'])
+        kwargs.update({'q': q, 'phi': phi})
+        # for _ in ['e1', 'e2']:
+        #     kwargs.pop(_)
+    table_data = list(map(lambda x: list(x.values()), kwargs_lens))
+    col_label = list(kwargs_lens[0].keys())
+    row_label = list(range(1, 1 + len(kwargs_lens)))
+
+    for k in range(len(data)):
+        if contains(txt=names[k], substr=['convergence', 'kappa']):
+            ax[k].imshow(np.log(data[k]), origin='lower', extent=extent)
+        else:
+            ax[k].imshow(data[k], origin='lower', extent=extent)
+        ax[k].title.set_text(names[k])
+    table_ax.axis('off')
+    table_ax.title.set_text('Lens Parameters')
+    tbl = plt.table(cellText=np.around(table_data, decimals=2), colLabels=col_label, rowLabels=row_label,
+                    loc='best')
+    tbl.auto_set_font_size(False)
+    tbl.set_fontsize(12)
+    table_ax.add_table(tbl)
+    # fig_size = fig.get_size_inches()
+    fig.set_size_inches(8, 8)
+    if save_dir.lower() == 'show':
+        plt.show()
+    else:
+        fig.savefig(f'{save_dir}/instance{lens_num if lens_num is not None else ""}.jpg', bbox_inches='tight')
+        plt.close(fig)
+
+
+def to_img(data: np.ndarray):
+    assert len(data.shape) <= 2, f'np.ndarray with shape={data.shape} is invalid'
+    if len(data.shape) == 1:
+        data = array2image(data)
+    return data.reshape(data.shape[0], data.shape[1], 1)
+
+
+def generate_stack(npix, deltapix, stack_size, light_model):
+    kdata = np.zeros((stack_size, npix, npix, 1))  # Container for kappa data
+    imdata = np.zeros((stack_size, npix, npix, 1))  # Container for image data
+    for j in range(stack_size):
+        kappa, image = generate_instance(npix=npix, deltapix=deltapix, light_model=light_model)
+        kdata[j] = kappa
+        imdata[j] = image
+    return [kdata, imdata]
+
+
+def generate_instance(npix, deltapix, light_model, save_dir=None, instance=None):
+    # numeric kwargs
+    kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}
     # PSF
     kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
     psf = PSF(**kwargs_psf)
@@ -134,116 +190,143 @@ def main():
     pixel_grid = grid(dpix=deltapix, npix=npix, origin_ra=0, origin_dec=0)
     xgrid, ygrid = make_grid(numPix=npix, deltapix=deltapix)
 
+    # Light center
+    light_center = sample_center(pixel_grid)
+    kwargs_light = [
+        {'amp': 1, 'R_sersic': 1 / 2, 'n_sersic': 3 / 2, 'center_x': light_center[0], 'center_y': light_center[1]}]
+    # Lens
+    lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid, light_center=light_center)
+    # Image Model
+    image_model = ImageModel(data_class=pixel_grid, psf_class=psf, lens_model_class=lens_model,
+                             source_model_class=light_model,
+                             lens_light_model_class=None,
+                             kwargs_numerics=kwargs_nums)  # , point_source_class=None)
     # We can add noise to images, see Lenstronomy documentation and examples.
+    image = to_img(image_model.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light,
+                                     lens_light_add=False, kwargs_ps=None))
+    kappa = to_img(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
+    #
+    # For simulation of images - mainly testing purposes
+    if save_dir is None:
+        return [kappa, image]
+    else:
+        # if we want we can add brightness plots
+        # brightness is not implemented in saving but this can be done very quickly by adding a few lines
+        # very similar to the commands saving imdata and kdata
+        brightness = to_img(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
+        make_image(data=[image, kappa, brightness],
+                   names=['Lensed Image', 'Convergence (log)', 'Galaxy w/o Lensing'],
+                   kwargs_lens=kwargs_lens,
+                   lens_num=instance,
+                   extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()),
+                   save_dir=save_dir)
+
+
+def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, training_dir):
+    # The following is just a mechanism of separating the training from the validation sets by counting down the
+    # number of instances to be generated
+    assert len(positions) == 4, f'{positions} is not a valid positions value.'
+    train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos = positions
+    if num_train > 0:
+        if num_train >= stack_size:
+            # save all to training
+            # reduce num_train
+            train_inp_pos = npy_write(f'{training_dir}/training_input.npy', train_inp_pos, imdata, size=num_train)
+            train_lab_pos = npy_write(f'{training_dir}/training_label.npy', train_lab_pos, kdata, size=num_train)
+            num_train -= stack_size
+        else:
+            # save only remaining to training and rest to validation
+            # reduce num_train
+            # reduce num_val
+            train_inp_pos = npy_write(f'{training_dir}/training_input.npy', train_inp_pos, imdata[:num_train],
+                                      size=num_train)
+            train_lab_pos = npy_write(f'{training_dir}/training_label.npy', train_lab_pos, kdata[:num_train],
+                                      size=num_train)
+            if num_val >= stack_size - num_train:
+                val_inp_pos = npy_write(f'{training_dir}/validation_input.npy', val_inp_pos, imdata[num_train:],
+                                        size=num_val)
+                val_lab_pos = npy_write(f'{training_dir}/validation_label.npy', val_lab_pos, kdata[num_train:],
+                                        size=num_val)
+                num_val -= stack_size - num_train
+            else:
+                print('Warning! Too many instances generated.')
+            num_train -= num_train
+    elif num_val > 0:
+        if num_val >= stack_size:
+            # save all to validation
+            # reduce num_val
+            val_inp_pos = npy_write(f'{training_dir}/validation_input.npy', val_inp_pos, imdata, size=num_val)
+            val_lab_pos = npy_write(f'{training_dir}/validation_label.npy', val_lab_pos, kdata, size=num_val)
+            num_val -= stack_size
+        else:
+            print('Warning! Too many instances generated.')
+    elif num_val < 0:
+        raise ValueError(f'Negative num_val: num_val={num_val}')
+    return [train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos, num_train, num_val]
+
+
+def get_dir(target, new: bool):
+    dir = input(f'Input {target} directory:')
+    while (isdir(dir) and new) or (not isdir(dir) and not new):
+        prompt = f'Directory {dir} exists!' if new else f'Directory {dir} does not exist!'
+        print(prompt)
+        dir = input(f'Input {target} directory:')
+    return dir
+
+
+# NEEDS TO BE FINISHED
+def generate_training(npix, deltapix, stacks, stack_size, **kwargs):
+    # Generates {stacks} bunches of {stack_size images}.
+    # stack_size is also the size of the np array initialized to store the images - has memory implications.
+    val_split = 0.1
+    training_dir = get_dir('training', new=True)
     num_train, num_val = np.around(stack_size * stacks * np.array([1 - val_split, val_split])).astype('int')
     if num_train + num_val == stacks * stack_size + 1:
         num_train -= 1
     assert num_train + num_val == stacks * stack_size, 'Number of training and validation instances does not match stack and stack_size.'
     train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos = 0, 0, 0, 0
+    light_model = LightModel(light_model_list=['SERSIC'])
     for i in range(stacks):
-        kdata = np.zeros((stack_size, npix, npix, 1))  # Container for kappa data
-        imdata = np.zeros((stack_size, npix, npix, 1))  # Container for image data
-        for j in range(stack_size):
-            # Light
-            light_model, kwargs_light, light_center = light(grid_class=pixel_grid)
-            # Lens
-            lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid, light_center=light_center)
-            # Image Model
-            image_model = ImageModel(data_class=pixel_grid, psf_class=psf, lens_model_class=lens_model,
-                                     source_model_class=light_model,
-                                     lens_light_model_class=None,
-                                     kwargs_numerics=kwargs_nums)  # , point_source_class=None)
-            image = image_model.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light,
-                                      lens_light_add=False, kwargs_ps=None)  # , point_source_add=False)
-            kappa = array2image(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
-            # Reshape to fit the expected input of tensorflow
-            image = image.reshape(image.shape[0], image.shape[1], 1)
-            kappa = kappa.reshape(kappa.shape[0], kappa.shape[1], 1)
-            kdata[j] = kappa
-            imdata[j] = image
-            # if we want we can add brightness plots
-            # brightness is not implemented in saving but this can be done very quickly by adding a few lines
-            # very similar to the commands saving imdata and kdata
-            brightness = array2image(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
-            #
-            # For simulation of images - mainly testing purposes
-            data = [image, kappa, brightness]
-            names = ['Lensed Image', 'Convergence (log)', 'Galaxy w/o Lensing']
-            fig = plt.figure()
-            gs = gridspec.GridSpec(2, 1, figure=fig)
-            subgs = gs[0].subgridspec(1, 3)
-            ax = subgs.subplots()
+        kdata, imdata = generate_stack(npix=npix, deltapix=deltapix, stack_size=stack_size, light_model=light_model)
+        train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos, num_train, num_val = save_stack(kdata=kdata,
+                                                                                                imdata=imdata,
+                                                                                                num_train=num_train,
+                                                                                                num_val=num_val,
+                                                                                                stack_size=stack_size,
+                                                                                                positions=(
+                                                                                                    train_inp_pos,
+                                                                                                    train_lab_pos,
+                                                                                                    val_inp_pos,
+                                                                                                    val_lab_pos),
+                                                                                                training_dir=training_dir)
+        # FINISH THIS UP
 
-            image_ax, table_ax = gs.subplots()
-            image_ax.axis('off')
-            fig.suptitle(f'Lens #{j + 1}, deltaPix={deltapix}')
-            for kwargs in kwargs_lens:
-                phi, q = el2phiq(kwargs['e1'], kwargs['e2'])
-                kwargs.update({'q': q, 'phi': phi})
-                # for _ in ['e1', 'e2']:
-                #     kwargs.pop(_)
-            table_data = list(map(lambda x: list(x.values()), kwargs_lens))
-            col_label = list(kwargs_lens[0].keys())
-            row_label = list(range(1, 1 + len(kwargs_lens)))
 
-            for k in range(3):
-                if k == 1:
-                    ax[k].imshow(np.log(data[k]), origin='lower',
-                                 extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
-                else:
-                    ax[k].imshow(data[k], origin='lower', extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
-                ax[k].title.set_text(names[k])
+def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
+    light_model = LightModel(light_model_list=['SERSIC'])
+    if action == 'save_img':
+        img_dir = get_dir('image', new=False)
+    else:
+        img_dir = 'show'
+    stack_size *= stacks
+    for i in range(stack_size):
+        generate_instance(npix=npix, deltapix=deltapix, light_model=light_model, save_dir=img_dir, instance=i + 1)
 
-            table_ax.axis('off')
-            table_ax.title.set_text('Lens Parameters')
 
-            tbl = plt.table(cellText=np.around(table_data, decimals=2), colLabels=col_label, rowLabels=row_label,
-                            loc='best')
-            tbl.auto_set_font_size(False)
-            tbl.set_fontsize(12)
-            table_ax.add_table(tbl)
-            # fig_size = fig.get_size_inches()
-            fig.set_size_inches(8, 8)
-            # fig.savefig(f'Lensing Examples/{deltapix}/example {j + 1}.jpg', bbox_inches='tight')
-            plt.show()
-            # plt.close(fig)
-        # The following is just a mechanism of separating the training from the validation sets by counting down the
-        # number of instances to be generated
-        # if num_train > 0:
-        #     if num_train >= stack_size:
-        #         # save all to training
-        #         # reduce num_train
-        #         train_inp_pos = npy_write(f'{save_dir}/training_input.npy', train_inp_pos, imdata, size=num_train)
-        #         train_lab_pos = npy_write(f'{save_dir}/training_label.npy', train_lab_pos, kdata, size=num_train)
-        #         num_train -= stack_size
-        #     else:
-        #         # save only remaining to training and rest to validation
-        #         # reduce num_train
-        #         # reduce num_val
-        #         train_inp_pos = npy_write(f'{save_dir}/training_input.npy', train_inp_pos, imdata[:num_train],
-        #                                   size=num_train)
-        #         train_lab_pos = npy_write(f'{save_dir}/training_label.npy', train_lab_pos, kdata[:num_train],
-        #                                   size=num_train)
-        #         if num_val >= stack_size - num_train:
-        #             val_inp_pos = npy_write(f'{save_dir}/validation_input.npy', val_inp_pos, imdata[num_train:],
-        #                                     size=num_val)
-        #             val_lab_pos = npy_write(f'{save_dir}/validation_label.npy', val_lab_pos, kdata[num_train:],
-        #                                     size=num_val)
-        #             num_val -= stack_size - num_train
-        #         else:
-        #             print('Warning! Too many instances generated.')
-        #         num_train -= num_train
-        # elif num_val > 0:
-        #     if num_val >= stack_size:
-        #         # save all to validation
-        #         # reduce num_val
-        #         val_inp_pos = npy_write(f'{save_dir}/validation_input.npy', val_inp_pos, imdata, size=num_val)
-        #         val_lab_pos = npy_write(f'{save_dir}/validation_label.npy', val_lab_pos, kdata, size=num_val)
-        #         num_val -= stack_size
-        #     else:
-        #         print('Warning! Too many instances generated.')
-        # elif num_val < 0:
-        #     raise ValueError(f'Negative num_val: num_val={num_val}')
+def simulation(npix, deltapix, stacks, stack_size, action: str):
+    action.lower()
+    options = {'save': generate_training, 'save_img': generate_image, 'show': generate_image}
+    func = options.get(action.lower(), None)
+    if func is None:
+        raise ValueError(f'{action} is not a recognized action.')
+    else:
+        func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, action=action.lower())
+
+
+def main():
+    # Constant constructs #
+    # The following constructs are shared by all generated lensing instances
+    simulation(npix=150, deltapix=0.1, stacks=3, stack_size=5, action='save')
 
 
 if __name__ == '__main__':
