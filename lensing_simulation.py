@@ -76,22 +76,16 @@ def grid(dpix, npix, origin_ra, origin_dec):
 
 def generate_lens(grid_class, light_center):
     num_of_lenses = np.random.randint(2, 5)
-    grid_len = len(grid_class.pixel_coordinates[0])
-    margin = np.floor(grid_len / 5)
     light_center = np.array(light_center)
     kwargs = []
     centers = []
-    # print(f"Light Center {light_center}")
     for _ in range(num_of_lenses):
         e1, e2 = phiq2el(np.random.uniform(0, 2 * np.pi), np.random.uniform(0.66, 1.0))
-        # print(f'ellipticity #{_ + 1}={(e1, e2)}')
         theta = np.random.normal(loc=1, scale=0.01)
         center = np.array([np.inf, np.inf])
         while np.linalg.norm(light_center - center) > 3 * theta or dist_check(lens_center=center,
                                                                               prev_centers=centers, rng=theta):
-            center = np.random.randint(margin, grid_len + 1 - margin, 2)
-            center = np.around(grid_class.map_pix2coord(x=center[0], y=center[1]), decimals=1)
-        # print(f'Center #{_ + 1}={center}')
+            center = sample_center(grid_class)
         centers.append(center)
         temp_kwargs = {'center_x': center[0], 'center_y': center[1], 'theta_E': theta, 'e1': e1, 'e2': e2}
         kwargs.append(temp_kwargs)
@@ -112,7 +106,7 @@ def sample_center(grid_class):
     grid_len = len(grid_class.pixel_coordinates[0])
     margin = np.floor(MARGIN_FRACTION * grid_len)
     cx, cy = np.random.randint(margin, grid_len + 1 - margin, 2)
-    cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=2)
+    cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=1)
     return np.array([cx, cy])
 
 
