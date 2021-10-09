@@ -121,19 +121,15 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
     gs = gridspec.GridSpec(2, 1, figure=fig)
     subgs = gs[0].subgridspec(1, len(data))
     ax = subgs.subplots()
-
     image_ax, table_ax = gs.subplots()
     image_ax.axis('off')
     if lens_num is not None: fig.suptitle(f'Lens #{lens_num}')
     for kwargs in kwargs_lens:
         phi, q = el2phiq(kwargs['e1'], kwargs['e2'])
         kwargs.update({'q': q, 'phi': phi})
-        # for _ in ['e1', 'e2']:
-        #     kwargs.pop(_)
     table_data = list(map(lambda x: list(x.values()), kwargs_lens))
     col_label = list(kwargs_lens[0].keys())
     row_label = list(range(1, 1 + len(kwargs_lens)))
-
     for k in range(len(data)):
         if contains(txt=names[k], substr=['convergence', 'kappa']):
             ax[k].imshow(np.log(data[k]), origin='lower', extent=extent)
@@ -179,11 +175,9 @@ def generate_instance(npix, deltapix, light_model, save_dir=None, instance=None)
     # PSF
     kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
     psf = PSF(**kwargs_psf)
-    # kernel = psf.kernel_point_source
     # Pixel Grid
     pixel_grid = grid(dpix=deltapix, npix=npix, origin_ra=0, origin_dec=0)
     xgrid, ygrid = make_grid(numPix=npix, deltapix=deltapix)
-
     # Light center
     light_center = sample_center(pixel_grid)
     kwargs_light = [
@@ -204,7 +198,6 @@ def generate_instance(npix, deltapix, light_model, save_dir=None, instance=None)
     if save_dir is None:
         return [kappa, image]
     else:
-        # if we want we can add brightness plots
         # brightness is not implemented in saving but this can be done very quickly by adding a few lines
         # very similar to the commands saving imdata and kdata
         brightness = to_img(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
@@ -268,7 +261,6 @@ def get_dir(target, new: bool):
     return dir
 
 
-# NEEDS TO BE FINISHED
 def generate_training(npix, deltapix, stacks, stack_size, **kwargs):
     # Generates {stacks} bunches of {stack_size images}.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
@@ -293,7 +285,6 @@ def generate_training(npix, deltapix, stacks, stack_size, **kwargs):
                                                                                                     val_inp_pos,
                                                                                                     val_lab_pos),
                                                                                                 training_dir=training_dir)
-        # FINISH THIS UP
 
 
 def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
