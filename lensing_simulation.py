@@ -1,5 +1,5 @@
-# from lenstronomy.Util.param_util import phi_q2_ellipticity as qphi2el
-from lenstronomy.Util.param_util import ellipticity2phi_q as el2qphi
+from lenstronomy.Util.param_util import phi_q2_ellipticity as phiq2el
+from lenstronomy.Util.param_util import ellipticity2phi_q as el2phiq
 # from lenstronomy.Data.imaging_data import ImageData
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
@@ -13,13 +13,25 @@ import numpy as np
 from os.path import isfile, isdir, dirname
 from pathlib import Path
 
+MARGIN_FRACTION = 1 / 4
+
+
+def dist_check(lens_center, prev_centers, rng):
+    prev_centers = np.array(prev_centers)
+
+    # finish distance checking so two lenses are not too close together
+    for center in prev_centers:
+        if np.linalg.norm(center - lens_center) < rng:
+            return True
+    return False  # True if len(prev_centers) == 0 else False
+
 
 def npy_write(filename: str, start_row, arr, size=None):
-    # This function is a hack and not does not use documented behavior, though it works.
+    # This function is a hack and does not use documented behavior, though it works.
     assert start_row >= 0 and isinstance(arr, np.ndarray)
     num_rows = len(arr) if len(arr.shape) > 1 else 1
     if not isfile(filename):
-        assert filename.endswith('.npy'), 'File name must end with .npy.'
+        assert filename.endswith('.npy'), 'File name must have extension .npy.'
         if size is not None and num_rows <= size:
             if not isdir(dirname(filename)):
                 Path(dirname(filename)).mkdir()
@@ -68,39 +80,40 @@ def generate_lens(grid_class, light_center):
     margin = np.floor(grid_len / 5)
     light_center = np.array(light_center)
     kwargs = []
-    # centers = []
+    centers = []
     # print(f"Light Center {light_center}")
     for _ in range(num_of_lenses):
-        e1, e2 = np.random.uniform(-0.5, 0.5, 2)
+        e1, e2 = phiq2el(np.random.uniform(0, 2 * np.pi), np.random.uniform(0.66, 1.0))
         # print(f'ellipticity #{_ + 1}={(e1, e2)}')
         theta = np.random.normal(loc=1, scale=0.01)
         center = np.array([np.inf, np.inf])
-        while np.linalg.norm(light_center - center) > 3 * theta:
+        while np.linalg.norm(light_center - center) > 3 * theta or dist_check(lens_center=center,
+                                                                              prev_centers=centers, rng=theta):
             center = np.random.randint(margin, grid_len + 1 - margin, 2)
             center = np.around(grid_class.map_pix2coord(x=center[0], y=center[1]), decimals=1)
         # print(f'Center #{_ + 1}={center}')
-        # centers.append(center)
+        centers.append(center)
         temp_kwargs = {'center_x': center[0], 'center_y': center[1], 'theta_E': theta, 'e1': e1, 'e2': e2}
         kwargs.append(temp_kwargs)
-    model = LensModel(lens_model_list=['SIE'] * num_of_lenses)
-    return [model, kwargs]
+
+    return [LensModel(lens_model_list=['SIE'] * num_of_lenses), kwargs]
 
 
 def light(grid_class):
     r, n = 1. / 2, 3 / 2
     grid_len = len(grid_class.pixel_coordinates[0])
-    margin = np.floor(grid_len / 5)
+    margin = np.floor(MARGIN_FRACTION * grid_len)
     cx, cy = np.random.randint(margin, grid_len + 1 - margin, 2)
     cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=2)
     kwargs = [{'amp': 1, 'R_sersic': r, 'n_sersic': n, 'center_x': cx, 'center_y': cy}]
-    model = LightModel(light_model_list=['SERSIC'])
-    return [model, kwargs, np.array([cx, cy])]
+
+    return [LightModel(light_model_list=['SERSIC']), kwargs, np.array([cx, cy])]
 
 
-def main(deltapix=0.05):
+def main():
     # Constant constructs #
     # The following constructs up to the "for" block are shared by all generated lensing instances
-    # deltapix = 0.05 # size of pixel in angular coordinates
+    deltapix = 0.1  # size of pixel in angular coordinates
     npix = 150  # image shape = (npix, npix, 1)
     save_dir = input('Input save directory:')
     while isdir(save_dir):
@@ -109,8 +122,8 @@ def main(deltapix=0.05):
     # Generates stacks bunches of stack_size images.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # In a future update these numbers won't make a difference as all data will be appended to one numpy file.
-    stack_size = 10  # 0000
-    stacks = 1  # 0
+    stacks = 1  # 10
+    stack_size = 3  # 10000
     val_split = 0.1
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
     # PSF
@@ -143,7 +156,8 @@ def main(deltapix=0.05):
             image = image_model.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light,
                                       lens_light_add=False, kwargs_ps=None)  # , point_source_add=False)
             kappa = array2image(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
-            image = image.reshape(image.shape[0], image.shape[1], 1)  # Reshape to fit the expected input of tensorflow
+            # Reshape to fit the expected input of tensorflow
+            image = image.reshape(image.shape[0], image.shape[1], 1)
             kappa = kappa.reshape(kappa.shape[0], kappa.shape[1], 1)
             kdata[j] = kappa
             imdata[j] = image
@@ -164,7 +178,7 @@ def main(deltapix=0.05):
             image_ax.axis('off')
             fig.suptitle(f'Lens #{j + 1}, deltaPix={deltapix}')
             for kwargs in kwargs_lens:
-                phi, q = el2qphi(kwargs['e1'], kwargs['e2'])
+                phi, q = el2phiq(kwargs['e1'], kwargs['e2'])
                 kwargs.update({'q': q, 'phi': phi})
                 # for _ in ['e1', 'e2']:
                 #     kwargs.pop(_)
@@ -174,9 +188,10 @@ def main(deltapix=0.05):
 
             for k in range(3):
                 if k == 1:
-                    ax[k].imshow(np.log(data[k]), extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
+                    ax[k].imshow(np.log(data[k]), origin='lower',
+                                 extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
                 else:
-                    ax[k].imshow(data[k], extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
+                    ax[k].imshow(data[k], origin='lower', extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()))
                 ax[k].title.set_text(names[k])
 
             table_ax.axis('off')
@@ -189,9 +204,9 @@ def main(deltapix=0.05):
             table_ax.add_table(tbl)
             # fig_size = fig.get_size_inches()
             fig.set_size_inches(8, 8)
-            fig.savefig(f'Lensing Examples/{deltapix}/example {j + 1}.jpg', bbox_inches='tight')
-            # plt.show()
-            plt.close(fig)
+            # fig.savefig(f'Lensing Examples/{deltapix}/example {j + 1}.jpg', bbox_inches='tight')
+            plt.show()
+            # plt.close(fig)
         # The following is just a mechanism of separating the training from the validation sets by counting down the
         # number of instances to be generated
         # if num_train > 0:
