@@ -80,7 +80,7 @@ def generate_lens(grid_class, light_center):
             center = np.around(grid_class.map_pix2coord(x=center[0], y=center[1]), decimals=1)
         # print(f'Center #{_ + 1}={center}')
         # centers.append(center)
-        temp_kwargs = {'theta_E': theta, 'e1': e1, 'e2': e2, 'center_x': center[0], 'center_y': center[1]}
+        temp_kwargs = {'center_x': center[0], 'center_y': center[1],'theta_E': theta, 'e1': e1, 'e2': e2}
         kwargs.append(temp_kwargs)
     model = LensModel(lens_model_list=['SIE'] * num_of_lenses)
     return [model, kwargs]
@@ -109,7 +109,7 @@ def main():
     # Generates stacks bunches of stack_size images.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # In a future update these numbers won't make a difference as all data will be appended to one numpy file.
-    stack_size = 10  # 0000
+    stack_size = 1  # 0000
     stacks = 1  # 0
     val_split = 0.1
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}  # numeric kwargs
@@ -166,8 +166,8 @@ def main():
             for kwargs in kwargs_lens:
                 phi, q = el2qphi(kwargs['e1'], kwargs['e2'])
                 kwargs.update({'q': q, 'phi': phi})
-                for _ in ['e1', 'e2']:
-                    kwargs.pop(_)
+                # for _ in ['e1', 'e2']:
+                #     kwargs.pop(_)
             table_data = list(map(lambda x: list(x.values()), kwargs_lens))
             col_label = list(kwargs_lens[0].keys())
             row_label = list(range(1, 1 + len(kwargs_lens)))
@@ -189,8 +189,8 @@ def main():
             table_ax.add_table(tbl)
             # fig_size = fig.get_size_inches()
             fig.set_size_inches(8, 8)
-            fig.savefig(f'example {j + 1}.jpg', bbox_inches='tight')
-            # plt.show()
+            # fig.savefig(f'example {j + 1}.jpg', bbox_inches='tight')
+            plt.show()
         # The following is just a mechanism of separating the training from the validation sets by counting down the
         # number of instances to be generated
         # if num_train > 0:
