@@ -13,7 +13,7 @@ import numpy as np
 from os.path import isfile, isdir, dirname
 from pathlib import Path
 
-MARGIN_FRACTION = 1 / 4
+MARGIN_FRACTION = 1 / 3
 
 
 def dist_check(lens_center, prev_centers, rng):
@@ -62,9 +62,9 @@ def npy_write(filename: str, start_row, arr, size=None):
         return start_row + num_rows
 
 
-def grid(dpix, npix, origin_ra, origin_dec):
+def grid(npix, deltapix, origin_ra, origin_dec):
     _, _, ra_at_xy_0, dec_at_xy_0, _, _, p2a_transform, _ = make_grid_with_coordtransform(numPix=npix,
-                                                                                          deltapix=dpix,
+                                                                                          deltapix=deltapix,
                                                                                           center_ra=origin_ra,
                                                                                           center_dec=origin_dec,
                                                                                           subgrid_res=1,
@@ -103,10 +103,13 @@ def contains(txt: str, substr: list):
 
 
 def sample_center(grid_class):
-    grid_len = len(grid_class.pixel_coordinates[0])
-    margin = np.floor(MARGIN_FRACTION * grid_len)
-    cx, cy = np.random.randint(margin, grid_len + 1 - margin, 2)
-    cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=1)
+    assert MARGIN_FRACTION <= 1 / 2, 'MARGIN_FRACTION must be <=1/2.'
+    xmin, ymin = (1 - 2 * MARGIN_FRACTION) * np.array(list(map(np.min, grid_class.pixel_coordinates)))
+    xmax, ymax = (1 - 2 * MARGIN_FRACTION) * np.array(list(map(np.max, grid_class.pixel_coordinates)))
+    # grid_len = len(grid_class.pixel_coordinates[0])
+    # margin = np.floor(MARGIN_FRACTION * grid_len)
+    cx, cy = list(map(lambda x: np.random.uniform(*x), [(xmin, xmax), (ymin, ymax)]))
+    # cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=1)
     return np.array([cx, cy])
 
 
@@ -169,21 +172,31 @@ def generate_stack(npix, deltapix, stack_size, light_model):
     return [kdata, imdata]
 
 
-def generate_instance(npix, deltapix, light_model, save_dir=None, instance=None):
+def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light=None,
+                      kwargs_lens=None):
+    light_model = light_model or LightModel(['SERSIC'])
     # numeric kwargs
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}
     # PSF
     kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
     psf = PSF(**kwargs_psf)
     # Pixel Grid
-    pixel_grid = grid(dpix=deltapix, npix=npix, origin_ra=0, origin_dec=0)
+    pixel_grid = grid(npix=npix, deltapix=deltapix, origin_ra=0, origin_dec=0)
     xgrid, ygrid = make_grid(numPix=npix, deltapix=deltapix)
     # Light center
-    light_center = sample_center(pixel_grid)
-    kwargs_light = [
-        {'amp': 1, 'R_sersic': 1 / 2, 'n_sersic': 3 / 2, 'center_x': light_center[0], 'center_y': light_center[1]}]
+    try:
+        light_center = list(map(kwargs_light.get, ['center_x', 'center_y']))
+    except AttributeError:
+        light_center = sample_center(pixel_grid)
+
+    kwargs_light = kwargs_light or {'amp': 1, 'R_sersic': 1 / 2, 'n_sersic': 3 / 2, 'center_x': light_center[0],
+                                    'center_y': light_center[1]}
+    kwargs_light = [kwargs_light]
     # Lens
-    lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid, light_center=light_center)
+    if kwargs_lens is None:
+        lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid, light_center=light_center)
+    else:
+        lens_model = LensModel(['SIE'] * len(kwargs_lens))
     # Image Model
     image_model = ImageModel(data_class=pixel_grid, psf_class=psf, lens_model_class=lens_model,
                              source_model_class=light_model,
@@ -299,7 +312,6 @@ def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
 
 
 def simulation(npix, deltapix, stacks, stack_size, action: str):
-    action.lower()
     options = {'save': generate_training, 'save_img': generate_image, 'show': generate_image}
     func = options.get(action.lower(), None)
     if func is None:
