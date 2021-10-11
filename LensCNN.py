@@ -1,14 +1,19 @@
 import os
+import glob
+
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
 from pathlib import Path
-from os.path import isdir, isfile
+from os.path import isdir, isfile, basename
 import time
 from datetime import datetime
 from pickle import dump
+import re
+
+from tensorflow.keras.utils import Sequence
 
 
 class BestCheckpoint(ModelCheckpoint):
@@ -51,7 +56,7 @@ class TimeHistory(Callback):
     def __init__(self, name, initial_epoch):
         '''
         Constructor
-        :param name: Model name.
+        :param name: Model model_dir.
         :param initial_epoch: Starting epoch.
         '''
         self.name = name
@@ -174,7 +179,7 @@ def npy_read(filename: str, start_row, num_rows):
     __author__ = "David Warde-Farley"
     __copyright__ = "Copyright (c) 2012 by " + __author__
     __license__ = "3-clause BSD"
-    __email__ = "dwf@dwf.name"
+    __email__ = "dwf@dwf.model_dir"
 
     Reads chunks of data from a given numpy file.
     :param filename: npy file to read.
@@ -204,17 +209,17 @@ def npy_read(filename: str, start_row, num_rows):
 
 
 # This function defines the architecture, change it here.
-def create_model(loss_func, name: str, kernel_size=(3, 3), pool_size=(2, 2), input_shape=(100, 100, 1)):
+def create_model(loss_func, dir: str, kernel_size=(3, 3), pool_size=(2, 2), input_shape=(150, 150, 1)):
     '''
     Creates a model according to the architecture defined inside.
     :param loss_func: Loss function to use.
-    :param name: Model name.
+    :param dir: Model model_dir.
     :param kernel_size: Convolution kernel size, (3,3) unless otherwise specified.
     :param pool_size: UpSampling and MaxPooling pool size, (2,2) unless otherwise specified.
     :param input_shape: Input image shape, (100,100,1) unless otherwise specified.
     :return: Sequetial Keras model built according to the specified architecture.
     '''
-    model = Sequential(name=name)
+    model = Sequential(name=basename(dir))
 
     model.add(Conv2D(16, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
                      kernel_initializer='he_normal'))
@@ -235,11 +240,11 @@ def create_model(loss_func, name: str, kernel_size=(3, 3), pool_size=(2, 2), inp
     model.compile(loss=loss_func, optimizer='Adadelta', metrics=['accuracy'])
 
     try:
-        with open(f'models/{name}/summary.txt', 'wt') as file:
+        with open(f'{dir}/summary.txt', 'wt') as file:
             model.summary(print_fn=lambda x: file.write(x + '\n'))
     except FileNotFoundError:
         print(f'Directory not found. Defaulting to current working directory at {os.getcwd()}.')
-        with open(f'{name} summary.txt', 'wt') as file:
+        with open(f'{basename(dir)} summary.txt', 'wt') as file:
             model.summary(print_fn=lambda x: file.write(x + '\n'))
 
     return model
@@ -264,34 +269,47 @@ def time_convert(seconds):
     return ':'.join([hrs, mins, seconds])
 
 
-def isletter(tst: str, let: str = None):
+def isletter(tst: str, letter=None):
     '''
-    Checks if tst is a single letter. If let is supplied checks whether the letters match (case insensitive).
+    Checks if tst is a single letter.
+    If letter is supplied checks whether the letters match (case insensitive).
+    letter can be a list of letters
     '''
     if len(tst) != 1:
         return False
-    elif let is None:
+    if isinstance(letter, list):
+        res = []
+        for char in letter:
+            if isletter(tst, char):
+                return True
+        return False
+
+    elif letter is None:
         return tst.isalpha()
     else:
-        assert len(let) == 1
-        if let.islower():
-            return tst == let or ord(tst) == ord(let) - 32
-        else:
-            return tst == let or ord(tst) == ord(let) + 32
+        assert isinstance(letter, str) and len(letter) == 1, f'"{letter}" cannot be longer than one character'
+        # if letter.islower():
+        #     return tst == letter or ord(tst) == ord(letter) - 32
+        # else:
+        #     return tst == letter or ord(tst) == ord(letter) + 32
+        return tst.lower() == letter.lower()
 
 
 def cb_menu(cb_names: dict):
     '''
     Prints callback menu from dictionary of names. Used in get_cbs()
     '''
-    return f'Select callbacks to utilize. Note: time logging is on by default and cannot be turned off as it is necessary for epoch timing.\nOptions:\n' + '-' * 60 + '\n' + '\n'.join(
-        [f'{i[0]} -> {i[1]}' for i in
-         cb_names.items()]) + '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are case-sensitive.\n'
+    msg1 = f'Select callbacks to utilize. Note: time logging and model checkpoint are on by default and cannot be '
+    msg2 = f'turned off as they are necessary for epoch timing and model saving (respectively).\nOptions:\n'
+    msg3 = '-' * 60 + '\n' + '\n'.join([f'{i[0]} --> {i[1]}' for i in cb_names.items()])
+    msg4 = '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are case-sensitive.\n '
+    return msg1 + msg2 + msg3 + msg4
 
 
 def create_log(batch_size, epochs, numsample, numval, input_training: str, input_validation: str,
                label_training: str, label_validation: str, input_shape=(100, 100, 1), kernel_size=(3, 3),
-               pool_size=(2, 2), loss_func=None, first_run=False, name: str = None, init_epoch: int = None):
+               pool_size=(2, 2), loss_func=None, first_run=False, name: str = None, init_epoch: int = None,
+               model_to_load=None):
     '''
     Creates the log entry, whether for an existing file or for a first run
     '''
@@ -303,16 +321,18 @@ def create_log(batch_size, epochs, numsample, numval, input_training: str, input
                 '=' * 100 + '\n',
                 f'Initial training sequence started on {date} at {tm}.\n']
     else:
-        temp = ['\n' + '-' * 50 + '\n',
-                f'Additional training sequence initiated on {date} at {tm}\n']
-
+        if model_to_load:
+            temp = ['\n' + '-' * 50 + '\n',
+                    f'Additional training sequence initiated on {date} at {tm} for checkpoint {model_to_load}\n']
+        else:
+            raise ValueError('Must supply model_to_load for first_run=False.')
     temp.extend([
         f'{numsample} instances of {input_shape[0]}x{input_shape[1]} images with {input_shape[2]} color channels validated against {numval} test samples.\n',
         f'Batch size: {batch_size}\n'])
     if not first_run and init_epoch is not None:
         temp.extend([f'Initial Epoch: {init_epoch}\n'])
     elif not first_run and init_epoch is None:
-        raise ValueError('Cannot define log file when first_run=True and init_epoch undefined.')
+        raise ValueError('Cannot define log file when first_run=False and init_epoch undefined.')
 
     temp.extend([f'Number of Epochs: {epochs}\n',
                  f'Training input file:{input_training}\n',
@@ -332,21 +352,19 @@ def isnat(test):
         return False
 
 
-# Add callbacks to this function
-def get_cbs(name: str, init_epoch: int = 0):
+# Add/change callbacks IN this function
+def get_cbs(model_dir: str, init_epoch: int = 0):
     '''
     Construct a list of callbacks to be used in model.fit().
-    :param name: Model name (used to identify model in classes which save logs to file).
+    :param model_dir: Model name (used to identify model in classes which save logs to file).
     :param init_epoch: Starting epoch.
     :return: List of keras callbacks.
     '''
-    date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
+    date, time = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
 
     # 1/3 Add callbacks here
-    tb = TensorBoard(log_dir=f'logs/{name}')  # TensorBoard
-    mcp = ModelCheckpoint(filepath=f'models/{name}/Checkpoint.h5', save_freq='epoch', verbose=1,
-                          save_weights_only=False)  # Model Checkpoint
-    mbst = BestCheckpoint(filepath=f'models/{name}/BestFit_{date.replace("/", "-")}_{tm.replace(":", "")}.h5',
+    tb = TensorBoard(log_dir=f'logs/{basename(model_dir)}')  # TensorBoard
+    mbst = BestCheckpoint(filepath=f'{model_dir}/BestFit_{date.replace("/", "-")}_{time.replace(":", "")}.h5',
                           monitor='val_loss',
                           save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
@@ -354,12 +372,10 @@ def get_cbs(name: str, init_epoch: int = 0):
                               min_delta=1e-4)  # Adaptive Learning Rate
     # 2/3 Then assign an id and add the new callback to the dictionaries
     cb_names = {'tb': 'TensorBoard',
-                'mcp': 'Epoch Checkpoint',
                 'mbst': 'Best Checkpoint',
                 'estop': 'Early Stopping',
                 'redlr': 'Reduce LR on Plateau'}
     cb_dict = {'tb': tb,
-               'mcp': mcp,
                'mbst': mbst,
                'estop': estop,
                'redlr': redlr}
@@ -369,8 +385,9 @@ def get_cbs(name: str, init_epoch: int = 0):
     # It MUST precede BestCheckpoint in the list of callbacks. As it is currently, BestCheckpoint is always added after TimeHistory.
     # No error will be thrown over this but it will seamlessly affect the log files, beware!
     # (See comments in BestCheckpoint._save_model() method)
-    callbacks = [TimeHistory(name=name,
-                             initial_epoch=init_epoch)]
+    callbacks = [TimeHistory(name=basename(model_dir), initial_epoch=init_epoch),
+                 ModelCheckpoint(filepath=f'{model_dir}/Checkpoint.h5', save_freq='epoch', verbose=1,
+                                 save_weights_only=False)]
     cb_temp = ['Epoch Timing']
 
     flag = input(cb_menu(cb_names)).lower()
@@ -397,134 +414,173 @@ def get_cbs(name: str, init_epoch: int = 0):
     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
 
 
-def main():
-    now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
-    DATE, TIME = now.split()
-    ### Model Parameters ###
-    init_epoch = 0  # 0 means that the initial epoch is actually 1. This enumeration logic is pervasive in all functions which accept some form of init_epoch argument.
-    batch_size = input('Batch size: ')
-    while not isnat(batch_size):
-        batch_size = input('Batch size should be a positive integer.\nBatch size: ')
-    batch_size = int(batch_size)
+def get_nat(name: str):
+    nat = input(f'{name}: ')
+    while not isnat(nat):
+        nat = input(f'{name} should be a positive integer.\n{name}: ')
+    return int(nat)
 
-    epochs = input('Number of epochs: ')
-    while not isnat(epochs):
-        epochs = input('Number of epochs should be a positive integer.\nNumber of epochs: ')
-    epochs = int(epochs)
 
-    kernel_size = (3, 3)
-    pool_size = (2, 2)
-    loss_func = tf.keras.losses.mse
+def validate_data(training: tuple, validation: tuple):
+    tr_inp_shape, tr_lab_shape = list(map(npy_get_shape, training))
+    val_inp_shape, val_lab_shape = list(map(npy_get_shape, validation))
 
-    input_training = get_file(text='Training input path:')
-    label_training = get_file(text='Training label path:')
-    input_validation = get_file(text='Validation input path:')
-    label_validation = get_file(text='Validation label path:')
+    assert tr_inp_shape == tr_lab_shape, 'Shapes of training input and labels must match!'
+    assert val_inp_shape == val_lab_shape, 'Shapes of validation input and labels must match!'
+
+    return [tr_inp_shape[0], val_inp_shape[0], tr_inp_shape[1:]]
+
+
+def get_dir(target, new: bool, base=''):
+    if base:
+        assert isdir(base), f'{base} must be an existing directory.'
+        base = base.replace('\\', '/').removesuffix('/')
+    dir = (base + '/' if base else '') + input(f'Input {target} directory:{base + "/" if base else ""}')
+    while (isdir(dir) and new) or (not isdir(dir) and not new):
+        prompt = f'Directory {dir} exists!' if new else f'Directory {dir} does not exist!'
+        print(prompt)
+        dir = (base + '/' if base else '') + input(f'Input {target} directory:{base + "/" if base else ""}')
+    if new: Path(dir).mkdir()
+    return dir
+
+
+def opts_menu(txt: str, resp_dic: dict = {}):
+    options = re.findall(r'[(\[{](\w|\d+)[)\]}]', txt) or None
+    if options is None:
+        raise ValueError('No bracketed characters/numbers in input string.')
+    else:
+        options = sorted([x.lower() for x in options])
+        if resp_dic:
+            assert sorted(resp_dic.keys()) == options, 'Response keys do not match text.'
+
+    response = input(txt + '\n')
+    while not isletter(response, options):
+        response = input(f'Unexpected response.Options:\n{", ".join(options)}\n')
+
+    return resp_dic.get(response, response)
+
+
+def dic_menu(dic: dict, init=''):
+    if len(dic) == 1:
+        return list(dic.values())[0]
+    prompt = init + f'\n' + '-' * 60 + '\n' + '\n'.join([f'{i} --> {j}' for i, j in dic.items()]) + '\n' + '-' * 60+'\n'
+    dic = dict(zip([str(x) for x in dic.keys()], dic.values()))
+
+    result = dic.get(input(prompt), None)
+    while result is None:
+        print('Unexpected response.')
+        result = dic.get(input(prompt), None)
+    return result
+
+
+def initiate_training():
+    batch_size = get_nat('Batch size')
+    epochs = get_nat('Number of epochs')
+    # input_training = get_file(text='Training input path:')
+    # label_training = get_file(text='Training label path:')
+    # input_validation = get_file(text='Validation input path:')
+    # label_validation = get_file(text='Validation label path:')
 
     ### USED FOR TESTING. Smaller sets for faster epochs
-    # input_training = 'TEST_input.npy'
-    # label_training = 'TEST_label.npy'
-    # input_validation = 'TEST_input.npy'
-    # label_validation = 'TEST_label.npy'
+    input_training = 'TEST_input.npy'
+    label_training = 'TEST_label.npy'
+    input_validation = 'TEST_input.npy'
+    label_validation = 'TEST_label.npy'
 
-    # validation of test and training set sizes
-    shape_x = npy_get_shape(input_training)
-    shape_y = npy_get_shape(label_training)
-    shape_x_val = npy_get_shape(input_validation)
-    shape_y_val = npy_get_shape(label_validation)
+    return [batch_size, epochs, (input_training, label_training), (input_validation, label_validation)]
 
-    assert shape_x == shape_y, "Shapes of training input and labels must match!"
-    assert shape_x_val == shape_y_val, "Shapes of validation input and labels must match!"
-    NUMSAMPLE = shape_x[0]
-    NUMVAL = shape_x_val[0]
-    input_shape = shape_x[1:]
 
-    ### End Model Parameters ###
+def create_cnn(loss_func=tf.keras.losses.mse, kernel_size=(3, 3), pool_size=(2, 2)):
+    batch_size, epochs, training, validation = initiate_training()
+    num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
+    # input_training, label_training = training
+    # input_validation, label_validation = validation
 
-    ### Identifying the model ###
-    create = input('(L)oad/(C)reate model? ')
-    while not (isletter(create, 'c') or isletter(create, 'l')):
-        create = input('Unexpected response. l/c ?')
-    create = isletter(create, 'c')
+    ### Creating the model directory ###
+    model_dir, model_name = (lambda x: (x, basename(x)))(get_dir(target='model', new=True, base='models/'))
+    print('Creating model directory.')
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0)
+    print('Preparing log file.')
+    log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
+                     input_training=training[0], input_validation=validation[0],
+                     label_training=training[1], label_validation=validation[1], input_shape=input_shape,
+                     pool_size=pool_size, kernel_size=kernel_size, first_run=True, name=model_name,
+                     loss_func=loss_func)
+    # temp is a list whose contents are to be appended to the log file.
+    # Mostly used in the model loading logging strategy.
+    log.append(callback_log)
+    log.append(input('Additional Comments:') + '\n')
+    write_log(model_dir=model_dir, log=log)
+    print(f'Building model {model_name}.')
+    model = create_model(loss_func=loss_func, dir=model_dir, kernel_size=kernel_size, pool_size=pool_size,
+                         input_shape=input_shape)
 
-    ver = input('Model version:')
-    while not isnat(ver):
-        ver = input('Improper format. Expected integer.\nModel version:')
-    ver = int(ver)
+    train_model(model=model, batch_size=batch_size, epochs=epochs, training=training, validation=validation,
+                callbacks=callbacks, model_dir=model_dir)
 
-    NAME = f'Lens_CNN_v{ver}'
 
-    if create:
-        ### Creating the model directory ###
-        while isdir(f'models/{NAME}'):
-            ver = input('Model version exists.\nEnter different version:')
-            while not isnat(ver):
-                ver = input('Improper format. Expected integer.\nModel version:')
-            ver = int(ver)
-            NAME = f'Lens_CNN_v{ver}'
-        print('Creating model directory.')
-        Path(f'models/{NAME}').mkdir()
-        ### End directory creation ###
-
-        print('Preparing log file.')
-        log = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
-                         input_training=input_training, input_validation=input_validation,
-                         label_training=label_training, label_validation=label_validation, input_shape=input_shape,
-                         pool_size=pool_size, first_run=True, name=NAME, loss_func=loss_func)
-        # temp is a list whose contents are to be appended to the log file.
-        # Mostly used in the model loading logging strategy.
-        temp = []
-
-        print(f'Building model {NAME}.')
-        model = create_model(name=NAME, loss_func=loss_func, kernel_size=kernel_size, input_shape=input_shape,
-                             pool_size=pool_size)
-    else:  # Load file
-        while not isdir(f'models/{NAME}'):
-            ver = input('Model not found.\nEnter existing version:')
-            while not isnat(ver):
-                ver = input('Improper format. Expected integer.\nModel version:')
-            ver = int(ver)
-            NAME = f'Lens_CNN_v{ver}'
-        model_to_load = f'models/{NAME}/Checkpoint.h5'
-        print('Preparing log file.')
-        # init_epoch = []
-        with open(f'models/{NAME}/model.txt', 'rt') as file:
-            log = file.readlines()
-        for i in range(len(log)):
-            if 'Epoch\t\t\tTime' in log[i]:
-                ind = i - 1
-            if 'Number of Epochs' in log[i]:
-                init_epoch += int(log[i].split()[-1])
-
-        temp = create_log(batch_size=batch_size, epochs=epochs, numsample=NUMSAMPLE, numval=NUMVAL,
-                          input_training=input_training, input_validation=input_validation,
-                          label_training=label_training, label_validation=label_validation, input_shape=input_shape,
-                          pool_size=pool_size, init_epoch=init_epoch)
-
-        print(f'Loading model {NAME}.')
-        model = load_model(model_to_load)
-
-    ### Callbacks ###
-
-    callbacks, message = get_cbs(name=NAME, init_epoch=init_epoch)
-
-    temp.append(message)
+def load_cnn(**kwargs):
+    batch_size, epochs, training, validation = initiate_training()
+    num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
+    model_dir, model_name = (lambda x: (x, basename(x)))(get_dir(target='model', new=False, base='models/'))
+    model_options = (lambda y: dict(zip(range(len(y)), y)))([basename(x) for x in glob.glob(f'{model_dir}/*.h5')])
+    if model_options:
+        model_to_load = dic_menu(dic=model_options, init='Choose checkpoint to load')
+    else:
+        raise FileNotFoundError('No *.h5 files found in model directory.')
+    print('Preparing log file.')
+    # init_epoch = []
+    log, ind, init_epoch = fetch_log(model_dir)
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch)
+    temp = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
+                      input_training=training[0], input_validation=validation[0],
+                      label_training=training[1], label_validation=validation[1],
+                      input_shape=input_shape, init_epoch=init_epoch, model_to_load=model_to_load)
+    temp.append(callback_log)
     temp.append(input('Additional Comments:') + '\n')
+    write_log(model_dir=model_dir, log=log, insert=temp, insert_pos=ind)
 
+    print(f'Loading {model_to_load} checkpoint of model {model_name}.')
+    model = load_model(f'{model_dir}/{model_to_load}')
+
+    train_model(model=model, batch_size=batch_size, epochs=epochs, training=training, validation=validation,
+                callbacks=callbacks, model_dir=model_dir, init_epoch=init_epoch)
+
+
+def write_log(model_dir, log, insert=[], insert_pos=None):
+    if insert and insert_pos:
+        for line, i in zip(insert, range(insert_pos, insert_pos + len(insert))):
+            log.insert(i, line)
+    elif bool(insert) ^ bool(insert_pos):  # (insert and not insert_pos) or (not insert and insert_pos):
+        raise ValueError('insert text and insert_pos must be supplied to insert text.')
+    with open(f'{model_dir}/model.txt', 'wt') as file:
+        print('Writing logs to file.')
+        file.writelines(log)
+
+
+def fetch_log(model_dir):
+    init_epoch = 0
+    with open(f'{model_dir}/model.txt', 'rt') as file:
+        log = file.readlines()
+    for i in range(len(log)):
+        if 'Epoch\t\t\tTime' in log[i]:
+            ind = i - 1
+        if 'Number of Epochs' in log[i]:
+            init_epoch += int(log[i].split()[-1])
+
+    return [log, ind, init_epoch]
+
+
+def train_model(model, batch_size, epochs, training, validation, callbacks, model_dir, init_epoch=0):
+    now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
+    date, time = now.split()
+
+    input_training, label_training = training
+    input_validation, label_validation = validation
     train_sequence = LensSequence(x_set=input_training, y_set=label_training,
                                   batch_size=batch_size)  # initialize a training sequence
     test_sequence = LensSequence(x_set=input_validation, y_set=label_validation,
                                  batch_size=batch_size)  # initialize a validation sequence
-
-    ### MODEL ###
-    print('Writing logs to file.')
-    if create:
-        log.extend(temp)
-    else:
-        for line, i in zip(temp, range(ind, ind + len(temp))):
-            log.insert(i, line)
-    with open(f'models/{NAME}/model.txt', 'wt') as file:
-        file.writelines(log)
     history = model.fit(train_sequence,
                         batch_size=batch_size,
                         initial_epoch=init_epoch,
@@ -532,9 +588,13 @@ def main():
                         verbose=1,
                         validation_data=test_sequence,
                         callbacks=callbacks)
-    with open(f'models/{NAME}/history_{DATE.replace("/", "-")}_{TIME.replace(":", "")}.pickle', 'xb') as file:
+    with open(f'{model_dir}/history_{date.replace("/", "-")}_{time.replace(":", "")}.pickle', 'xb') as file:
         dump(history.history, file)
-    print(f'{NAME} has finished training sequence.')
+    print(f'{basename(model_dir)} has finished training sequence.')
+
+
+def main():
+    opts_menu('(L)oad/(C)reate model? ', {'c': create_cnn, 'l': load_cnn})()
 
 
 if __name__ == '__main__':
