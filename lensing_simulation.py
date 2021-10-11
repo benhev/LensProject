@@ -13,7 +13,9 @@ import numpy as np
 from os.path import isfile, isdir, dirname
 from pathlib import Path
 
-MARGIN_FRACTION = 1 / 3
+from LensCNN import get_dir
+
+MARGIN_FRACTION = 0.4
 
 
 def dist_check(lens_center, prev_centers, rng):
@@ -34,7 +36,7 @@ def npy_write(filename: str, start_row, arr, size=None):
         assert filename.endswith('.npy'), 'File name must have extension .npy.'
         if size is not None and num_rows <= size:
             if not isdir(dirname(filename)):
-                Path(dirname(filename)).mkdir()
+                Path(dirname(filename)).mkdir(parents=True, exist_ok=True)
             np.save(filename, np.zeros((size,) + arr.shape[1:], dtype=arr.dtype), allow_pickle=False)
         else:
             raise ValueError(
@@ -75,17 +77,17 @@ def grid(npix, deltapix, origin_ra, origin_dec):
 
 
 def generate_lens(grid_class, light_center):
-    num_of_lenses = np.random.randint(2, 5)
-    light_center = np.array(light_center)
+    num_of_lenses = np.random.randint(1, 5)
+    # light_center = np.array(light_center)
     kwargs = []
     centers = []
     for _ in range(num_of_lenses):
-        e1, e2 = phiq2el(np.random.uniform(0, 2 * np.pi), np.random.uniform(0.66, 1.0))
+        e1, e2 = phiq2el(np.random.uniform(0, np.pi), np.random.uniform(0.7, 1.0))
         theta = np.random.normal(loc=1, scale=0.01)
-        center = np.array([np.inf, np.inf])
-        while np.linalg.norm(light_center - center) > 3 * theta or dist_check(lens_center=center,
-                                                                              prev_centers=centers, rng=theta):
-            center = sample_center(grid_class)
+        # center = np.array([np.inf, np.inf])
+        # while np.linalg.norm(light_center - center) > 3 * theta or dist_check(lens_center=center,
+        #                                                                       prev_centers=centers, rng=theta):
+        center = sample_center(grid_class)
         centers.append(center)
         temp_kwargs = {'center_x': center[0], 'center_y': center[1], 'theta_E': theta, 'e1': e1, 'e2': e2}
         kwargs.append(temp_kwargs)
@@ -102,10 +104,10 @@ def contains(txt: str, substr: list):
     return False
 
 
-def sample_center(grid_class):
-    assert MARGIN_FRACTION <= 1 / 2, 'MARGIN_FRACTION must be <=1/2.'
-    xmin, ymin = (1 - 2 * MARGIN_FRACTION) * np.array(list(map(np.min, grid_class.pixel_coordinates)))
-    xmax, ymax = (1 - 2 * MARGIN_FRACTION) * np.array(list(map(np.max, grid_class.pixel_coordinates)))
+def sample_center(grid_class, margin=MARGIN_FRACTION):
+    assert margin <= 1 / 2, 'MARGIN_FRACTION must be <=1/2.'
+    xmin, ymin = (1 - 2 * margin) * np.array(list(map(np.min, grid_class.pixel_coordinates)))
+    xmax, ymax = (1 - 2 * margin) * np.array(list(map(np.max, grid_class.pixel_coordinates)))
     # grid_len = len(grid_class.pixel_coordinates[0])
     # margin = np.floor(MARGIN_FRACTION * grid_len)
     cx, cy = list(map(lambda x: np.random.uniform(*x), [(xmin, xmax), (ymin, ymax)]))
@@ -113,13 +115,8 @@ def sample_center(grid_class):
     return np.array([cx, cy])
 
 
-def light(grid_class, r, n):
-    cx, cy = sample_center(grid_class)
-    kwargs = [{'amp': 1, 'R_sersic': r, 'n_sersic': n, 'center_x': cx, 'center_y': cy}]
-    return [LightModel(light_model_list=['SERSIC']), kwargs, np.array([cx, cy])]
-
-
 def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
+    assert len(data) == len(names), 'Names must match data.'
     fig = plt.figure()
     gs = gridspec.GridSpec(2, 1, figure=fig)
     subgs = gs[0].subgridspec(1, len(data))
@@ -147,9 +144,21 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
     tbl.set_fontsize(12)
     table_ax.add_table(tbl)
     # fig_size = fig.get_size_inches()
-    fig.set_size_inches(8, 8)
-    if save_dir.lower() == 'show':
-        plt.show()
+    fig.set_size_inches(3 * len(data), 8)
+    if 'show' in save_dir.lower():
+        if 'debug' in save_dir.lower():
+            base = 'debug'
+            save_dir = f'Lens{lens_num if lens_num is not None else ""}/'
+            if not isdir('/'.join((base, save_dir))):
+                Path(base, save_dir).mkdir(parents=True, exist_ok=True)
+            [np.save(file=f'{base}/{save_dir}/{x.removesuffix("(log)").removesuffix(" ")}.npy', arr=y,
+                     allow_pickle=False)
+             for x, y in zip(names, data)]
+            fig.savefig(f'{base}/Lens{lens_num if lens_num is not None else ""}.jpg', bbox_inches='tight')
+            plt.close(fig)
+        else:
+            plt.show()
+
     else:
         fig.savefig(f'{save_dir}/instance{lens_num if lens_num is not None else ""}.jpg', bbox_inches='tight')
         plt.close(fig)
@@ -172,8 +181,8 @@ def generate_stack(npix, deltapix, stack_size, light_model):
     return [kdata, imdata]
 
 
-def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light=None,
-                      kwargs_lens=None):
+def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light={},
+                      kwargs_lens={}):
     light_model = light_model or LightModel(['SERSIC'])
     # numeric kwargs
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}
@@ -184,16 +193,14 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     pixel_grid = grid(npix=npix, deltapix=deltapix, origin_ra=0, origin_dec=0)
     xgrid, ygrid = make_grid(numPix=npix, deltapix=deltapix)
     # Light center
-    try:
-        light_center = list(map(kwargs_light.get, ['center_x', 'center_y']))
-    except AttributeError:
-        light_center = sample_center(pixel_grid)
-
-    kwargs_light = kwargs_light or {'amp': 1, 'R_sersic': 1 / 2, 'n_sersic': 3 / 2, 'center_x': light_center[0],
-                                    'center_y': light_center[1]}
+    light_center = (lambda x: x if all(y is not None for y in x) else sample_center(pixel_grid, margin=0.45))(
+        list(map(kwargs_light.get, ['center_x', 'center_y'])))
+    kwargs_light = kwargs_light or {'amp': 1, 'R_sersic': 1 / 8, 'n_sersic': 3 / 2}
+    for key, val in zip(['center_x', 'center_y'], light_center):
+        kwargs_light.update({key: val})
     kwargs_light = [kwargs_light]
     # Lens
-    if kwargs_lens is None:
+    if not kwargs_lens:
         lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid, light_center=light_center)
     else:
         lens_model = LensModel(['SIE'] * len(kwargs_lens))
@@ -214,8 +221,9 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
         # brightness is not implemented in saving but this can be done very quickly by adding a few lines
         # very similar to the commands saving imdata and kdata
         brightness = to_img(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
-        make_image(data=[image, kappa, brightness],
-                   names=['Lensed Image', 'Convergence (log)', 'Galaxy w/o Lensing'],
+        alpha_x, alpha_y = list(map(to_img, lens_model.alpha(x=xgrid, y=ygrid, kwargs=kwargs_lens)))
+        make_image(data=[image, kappa, brightness, alpha_x, alpha_y],
+                   names=['Lensed Image', 'Convergence (log)', 'Galaxy w.o Lensing', 'Alpha x', 'Alpha y'],
                    kwargs_lens=kwargs_lens,
                    lens_num=instance,
                    extent=(xgrid.min(), xgrid.max(), ygrid.min(), ygrid.max()),
@@ -265,15 +273,6 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
     return [train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos, num_train, num_val]
 
 
-def get_dir(target, new: bool):
-    dir = input(f'Input {target} directory:')
-    while (isdir(dir) and new) or (not isdir(dir) and not new):
-        prompt = f'Directory {dir} exists!' if new else f'Directory {dir} does not exist!'
-        print(prompt)
-        dir = input(f'Input {target} directory:')
-    return dir
-
-
 def generate_training(npix, deltapix, stacks, stack_size, **kwargs):
     # Generates {stacks} bunches of {stack_size images}.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
@@ -305,7 +304,7 @@ def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     if action == 'save_img':
         img_dir = get_dir('image', new=False)
     else:
-        img_dir = 'show'
+        img_dir = action
     stack_size *= stacks
     for i in range(stack_size):
         generate_instance(npix=npix, deltapix=deltapix, light_model=light_model, save_dir=img_dir, instance=i + 1)
