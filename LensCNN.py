@@ -2,16 +2,30 @@ import os
 import glob
 
 import numpy as np
-import tensorflow as tf
+from tensorflow.keras.utils import Sequence as Keras_Sequence
+from tensorflow.keras import losses
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
 from pathlib import Path
-from os.path import isdir, isfile, basename
+from os.path import isdir, isfile, basename, dirname
 import time
 from datetime import datetime
 from pickle import dump
-import re
+from re import findall, compile as rcompile, match,escape
+
+
+class MyModelCheckpoint(ModelCheckpoint):
+    def _save_model(self, epoch, logs=None, batch=None):
+        regex = rcompile(escape(dirname(self.filepath)) + r'\\[cC]heckpoint[-_\w]*epoch=\d{3}[-_\s]*val_loss=\d+.\d{4}\.h5')
+        prev_epoch = [f for f in glob.glob(f'{dirname(self.filepath)}/*.h5') if
+                      regex.match(f) and f'epoch={epoch:03d}' in f]
+        # epoch is in fact 1 less than the number of epoch running
+        assert len(prev_epoch) <= 1, 'Found more than one previous epoch.'
+        prev_epoch = prev_epoch[0] if len(prev_epoch) == 1 else []
+        if prev_epoch:
+            os.remove(prev_epoch)
+        super()._save_model(epoch=epoch, logs=logs, batch=batch)
 
 
 class BestCheckpoint(ModelCheckpoint):
@@ -30,8 +44,9 @@ class BestCheckpoint(ModelCheckpoint):
         An extension of existing method in ModelCheckpoint.
         """
         current = logs.get(self.monitor)
+        log_dir = os.path.dirname(self.filepath).removesuffix('/BestFit') + '/model.txt'
         if self.monitor_op(current, self.best):
-            with open(os.path.dirname(self.filepath) + '/model.txt', 'rt') as file:
+            with open(log_dir, 'rt') as file:
                 txt = file.readlines()
             # When editing the last line of the logs file the assumption is that TimeHistory runs before
             # BestCheckpoint as callbacks in the fitting method. For this to be true TimeHistory must ALWAYS precede
@@ -39,10 +54,12 @@ class BestCheckpoint(ModelCheckpoint):
             # callbacks=[...BestCheckpoint,...,TimeHistory,...] will NOT work and effectively log the previous epoch!
             # No error will be thrown over this. Beware!
             txt[-1] = txt[-1].removesuffix(
-                '\n') + f'\t\t\t{str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))} with {self.monitor}={current}\n'
-            with open(os.path.dirname(self.filepath) + '/model.txt', 'wt') as file:
+                '\n') + f'\t{str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))} with {self.monitor}={current}\n'
+            with open(log_dir, 'wt') as file:
                 file.writelines(txt)
         # After saving logs to file, call the parent method to finish proper ModelCheckpoint execution.
+        # the function's signature has no batch argument but in runtime it receives it as a call
+        # I've left this as it is because it works
         super()._save_model(epoch=epoch, logs=logs, batch=batch)
 
 
@@ -62,21 +79,20 @@ class TimeHistory(Callback):
         self.epoch_time_start = None
         super().__init__()
 
-    def on_train_begin(self, logs={}):
+    def on_train_begin(self, logs=None):
         """
         Internally used method.
         Commands to be performed at beginning of training.
         :param logs: Dict. Currently not in use.
         """
-        # self.epoch = 0
         with open(f'models/{self.name}/model.txt', 'at') as file:
             if not self.epoch:
                 file.write('\n\n\tEpoch\t\t\tTime\t\t\tBest\n')
-                file.write('=' * 85 + '\n')
+                file.write('=' * 100 + '\n')
             else:
-                file.write('-' * 85 + '\n')
+                file.write('-' * 100 + '\n')
 
-    def on_epoch_begin(self, epoch, logs={}):
+    def on_epoch_begin(self, epoch, logs=None):
         """
         Internally used method.
         Commands to be performed at beginning of each epoch.
@@ -86,7 +102,7 @@ class TimeHistory(Callback):
         self.epoch_time_start = time.time()
         self.epoch += 1
 
-    def on_epoch_end(self, epoch, logs={}):
+    def on_epoch_end(self, epoch, logs=None):
         """
         Internally used method.
         Commands to be perfoemd at the end of each epoch.
@@ -98,7 +114,7 @@ class TimeHistory(Callback):
 
 
 # Data is too large to store in memory all at once, this Sequence class handles the input data in batches.
-class LensSequence(tf.keras.utils.Sequence):
+class LensSequence(Keras_Sequence):
     """
     Keras data sequence which reads numpy files in chunks.
     """
@@ -364,9 +380,9 @@ def get_cbs(model_dir: str, init_epoch: int = 0):
 
     # 1/3 Add callbacks here
     tb = TensorBoard(log_dir=f'logs/{basename(model_dir)}')  # TensorBoard
-    mbst = BestCheckpoint(filepath=f'{model_dir}/BestFit_{date.replace("/", "-")}_{tm.replace(":", "")}.h5',
-                          monitor='val_loss',
-                          save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
+    mbst = BestCheckpoint(
+        filepath=f'{model_dir}/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' + 'epoch={epoch:03d}--val_loss={val_loss:.4f}.h5',
+        monitor='val_loss', save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
     redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
                               min_delta=1e-4)  # Adaptive Learning Rate
@@ -387,9 +403,12 @@ def get_cbs(model_dir: str, init_epoch: int = 0):
     # No error will be thrown over this but it will seamlessly affect the log files, beware!
     # (See comments in BestCheckpoint._save_model() method)
     callbacks = [TimeHistory(name=basename(model_dir), initial_epoch=init_epoch),
-                 ModelCheckpoint(filepath=f'{model_dir}/Checkpoint.h5', save_freq='epoch', verbose=1,
-                                 save_weights_only=False)]
-    cb_temp = ['Epoch Timing']
+                 # ModelCheckpoint(filepath=f'{model_dir}/Checkpoint.h5', save_freq='epoch', verbose=1,
+                 MyModelCheckpoint(
+                     filepath=model_dir + '/Checkpoint/Checkpoint--epoch={epoch:03d}--val_loss={val_loss:.4f}.h5',
+                     save_freq='epoch', verbose=1,
+                     save_weights_only=False)]
+    cb_temp = ['Epoch Timing', 'Model Checkpoint']
 
     flag = input(cb_menu(cb_names)).lower()
     # 3/3 Finally, add an option to the menu using the assigned id from step 2
@@ -434,7 +453,8 @@ def validate_data(training: tuple, validation: tuple):
 
 def get_dir(target, new: bool, base=''):
     if base:
-        assert isdir(base), f'{base} must be an existing directory.'
+        if not isdir(base):
+            Path(base).mkdir(parents=True, exist_ok=True)
         base = base.replace('\\', '/').removesuffix('/')
     path_dir = (base + '/' if base else '') + input(f'Input {target} directory: {base + "/" if base else ""}')
     while (isdir(path_dir) and new) or (not isdir(path_dir) and not new):
@@ -448,8 +468,9 @@ def get_dir(target, new: bool, base=''):
     return path_dir
 
 
-def opts_menu(txt: str, resp_dic: dict = {}):
-    options = re.findall(r'[(\[{](\w|\d+)[)\]}]', txt) or None
+def opts_menu(txt: str, resp_dic: dict = None):
+    resp_dic = {} if resp_dic is None else resp_dic
+    options = findall(r'[(\[{](\w|\d+)[)\]}]', txt) or None
     if options is None:
         raise ValueError('No bracketed characters/numbers in input string.')
     else:
@@ -464,11 +485,13 @@ def opts_menu(txt: str, resp_dic: dict = {}):
     return resp_dic.get(response, response)
 
 
-def dic_menu(dic: dict, init=''):
+def dic_menu(dic: dict, prompt=''):
     if len(dic) == 1:
         return list(dic.values())[0]
-    prompt = init + f'\n' + '-' * 60 + '\n' + '\n'.join(
-        [f'{i} --> {j}' for i, j in dic.items()]) + '\n' + '-' * 60 + '\n'
+    line_length = np.max([len(x) for x in dic.values()])
+    line_length = np.max([line_length + 5, len(prompt), 50])
+    prompt = prompt + f'\n' + '-' * line_length + '\n' + '\n'.join(
+        [f'{i} {"-" * 5}> {j}' for i, j in dic.items()]) + '\n' + '-' * line_length + '\n'
     dic = dict(zip([str(x) for x in dic.keys()], dic.values()))
 
     result = dic.get(input(prompt), None)
@@ -495,16 +518,16 @@ def initiate_training():
     return [batch_size, epochs, (input_training, label_training), (input_validation, label_validation)]
 
 
-def create_cnn(loss_func=tf.keras.losses.mse, kernel_size=(3, 3), pool_size=(2, 2)):
+def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2)):
+    model_dir, model_name = (lambda x: (x, basename(x)))(get_dir(target='model', new=True, base='models/'))
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0)
     batch_size, epochs, training, validation = initiate_training()
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
     # input_training, label_training = training
     # input_validation, label_validation = validation
 
     ### Creating the model directory ###
-    model_dir, model_name = (lambda x: (x, basename(x)))(get_dir(target='model', new=True, base='models/'))
     print('Creating model directory.')
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0)
     print('Preparing log file.')
     log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
                      input_training=training[0], input_validation=validation[0],
@@ -524,26 +547,32 @@ def create_cnn(loss_func=tf.keras.losses.mse, kernel_size=(3, 3), pool_size=(2, 
                 callbacks=callbacks, model_dir=model_dir)
 
 
+def dir_menu(pattern: str, prompt: str, sanitize=''):
+    options = (lambda y: dict(zip(range(len(y)), y)))([x.removeprefix(sanitize) for x in glob.glob(pattern)])
+    if options:
+        return dic_menu(dic=options, prompt=prompt)
+    else:
+        raise FileNotFoundError(f'No files/folders matching {pattern} found.')
+
+
 def load_cnn(**kwargs):
+    model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
+        dir_menu(pattern='models/*/', prompt='Choose model to load'))
+
+    model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
+
     batch_size, epochs, training, validation = initiate_training()
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
-    model_dir, model_name = (lambda x: (x, basename(x)))(get_dir(target='model', new=False, base='models/'))
-    model_options = (lambda y: dict(zip(range(len(y)), y)))([basename(x) for x in glob.glob(f'{model_dir}/*.h5')])
-    if model_options:
-        model_to_load = dic_menu(dic=model_options, init='Choose checkpoint to load')
-    else:
-        raise FileNotFoundError('No *.h5 files found in model directory.')
-    print('Preparing log file.')
-    # init_epoch = []
-    log, ind, init_epoch = fetch_log(model_dir)
+    init_epoch = int(match(r'.*epoch=(\d{3}).*', model_to_load).group(1))
     callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch)
-    temp = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
-                      input_training=training[0], input_validation=validation[0],
-                      label_training=training[1], label_validation=validation[1],
-                      input_shape=input_shape, init_epoch=init_epoch, model_to_load=model_to_load)
-    temp.append(callback_log)
-    temp.append(input('Additional Comments:') + '\n')
-    write_log(model_dir=model_dir, log=log, insert=temp, insert_pos=ind)
+    print('Preparing log file.')
+    log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
+                     input_training=training[0], input_validation=validation[0],
+                     label_training=training[1], label_validation=validation[1],
+                     input_shape=input_shape, init_epoch=init_epoch, model_to_load=model_to_load)
+    log.append(callback_log)
+    log.append(input('Additional Comments:') + '\n')
+    write_log(model_dir=model_dir, log=log, insert=True)
 
     print(f'Loading {model_to_load} checkpoint of model {model_name}.')
     model = load_model(f'{model_dir}/{model_to_load}')
@@ -552,31 +581,27 @@ def load_cnn(**kwargs):
                 callbacks=callbacks, model_dir=model_dir, init_epoch=init_epoch)
 
 
-def write_log(model_dir, log, insert=[], insert_pos=None):
-    if insert and insert_pos:
-        for line, i in zip(insert, range(insert_pos, insert_pos + len(insert))):
+def write_log(model_dir, log, insert=False):
+    if insert:
+        temp = log
+        log, insert_pos = fetch_log(model_dir)
+        for line, i in zip(temp, range(insert_pos, insert_pos + len(temp))):
             log.insert(i, line)
-    elif bool(insert) ^ bool(insert_pos):  # (insert and not insert_pos) or (not insert and insert_pos):
-        raise ValueError('insert text and insert_pos must be supplied to insert text.')
     with open(f'{model_dir}/model.txt', 'wt') as file:
         print('Writing logs to file.')
         file.writelines(log)
 
 
 def fetch_log(model_dir):
-    init_epoch = 0
     with open(f'{model_dir}/model.txt', 'rt') as file:
         log = file.readlines()
     for i in range(len(log)):
         if 'Epoch\t\t\tTime' in log[i]:
-            ind = i - 1
-        if 'Number of Epochs' in log[i]:
-            init_epoch += int(log[i].split()[-1])
-
-    return [log, ind, init_epoch]
+            return [log, i - 1]
+    raise ValueError('No insert position found in log file.\n' + ''.join(log))
 
 
-def train_model(model, batch_size, epochs, training, validation, callbacks, model_dir, init_epoch=0):
+def train_model(model: Sequential, batch_size, epochs, training, validation, callbacks, model_dir, init_epoch=0):
     now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
     date, tm = now.split()
 
@@ -593,9 +618,11 @@ def train_model(model, batch_size, epochs, training, validation, callbacks, mode
                         verbose=1,
                         validation_data=test_sequence,
                         callbacks=callbacks)
-    with open(f'{model_dir}/history_{date.replace("/", "-")}_{tm.replace(":", "")}.pickle', 'xb') as file:
+    Path(f'{model_dir}/History').mkdir(exist_ok=True)
+    with open(f'{model_dir}/History/history_{date.replace("/", "-")}_{tm.replace(":", "")}.pickle', 'xb') as file:
         dump(history.history, file)
-    print(f'{basename(model_dir)} has finished training sequence.')
+    write_log(model_dir=model_dir, log=f'{model.name} completed training sequence successfully.\n', insert=True)
+    print(f'{model.name} has finished training successfully.')
 
 
 def main():
