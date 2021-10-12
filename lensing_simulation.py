@@ -15,7 +15,13 @@ from pathlib import Path
 
 from LensCNN import get_dir
 
+import winsound
+
+FREQ = 1000  # Set Frequency To 2500 Hertz
+DUR = 500  # Set Duration To 1000 ms == 1 second
+
 MARGIN_FRACTION = 0.4
+VAL_SPLIT = 0.1
 
 
 def dist_check(lens_center, prev_centers, rng):
@@ -26,6 +32,7 @@ def dist_check(lens_center, prev_centers, rng):
         if np.linalg.norm(center - lens_center) < rng:
             return True
     return False  # True if len(prev_centers) == 0 else False
+
 
 
 def npy_write(filename: str, start_row, arr, size=None):
@@ -58,10 +65,10 @@ def npy_write(filename: str, start_row, arr, size=None):
         # Get the number of elements in one 'row' by taking
         # a product over all other dimensions.
         row_size = np.prod(shape[1:])
-        start_byte = start_row * row_size * dtype.itemsize
+        start_byte = np.int64(start_row * row_size * dtype.itemsize)
         file.seek(start_byte, 1)
         arr.tofile(file)
-        return start_row + num_rows
+    return start_row + num_rows
 
 
 def grid(npix, deltapix, origin_ra, origin_dec):
@@ -168,7 +175,7 @@ def to_img(data: np.ndarray):
     assert len(data.shape) <= 2, f'np.ndarray with shape={data.shape} is invalid'
     if len(data.shape) == 1:
         data = array2image(data)
-    return data.reshape(data.shape[0], data.shape[1], 1)
+    return data.reshape(data.shape + (1,))
 
 
 def generate_stack(npix, deltapix, stack_size, light_model):
@@ -181,8 +188,10 @@ def generate_stack(npix, deltapix, stack_size, light_model):
     return [kdata, imdata]
 
 
-def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light={},
-                      kwargs_lens={}):
+def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light=None,
+                      kwargs_lens=None):
+    kwargs_light = {} if kwargs_light is None else kwargs_light
+    kwargs_lens = {} if kwargs_lens is None else kwargs_lens
     light_model = light_model or LightModel(['SERSIC'])
     # numeric kwargs
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}
@@ -255,7 +264,7 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
                                         size=num_val)
                 val_lab_pos = npy_write(f'{training_dir}/validation_label.npy', val_lab_pos, kdata[num_train:],
                                         size=num_val)
-                num_val -= stack_size - num_train
+                num_val -= (stack_size - num_train)
             else:
                 print('Warning! Too many instances generated.')
             num_train -= num_train
@@ -268,35 +277,31 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
             num_val -= stack_size
         else:
             print('Warning! Too many instances generated.')
-    elif num_val < 0:
-        raise ValueError(f'Negative num_val: num_val={num_val}')
-    return [train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos, num_train, num_val]
+    elif num_val < 0 or num_train < 0:
+        raise ValueError(f'Negative num: num_train={num_train},num_val={num_val}')
+    return [(train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos), num_train, num_val]
 
 
-def generate_training(npix, deltapix, stacks, stack_size, **kwargs):
+def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, **kwargs):
     # Generates {stacks} bunches of {stack_size images}.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
-    val_split = 0.1
+    # val_split = 0.1
     training_dir = get_dir('training', new=True)
     num_train, num_val = np.around(stack_size * stacks * np.array([1 - val_split, val_split])).astype('int')
     if num_train + num_val == stacks * stack_size + 1:
         num_train -= 1
     assert num_train + num_val == stacks * stack_size, 'Number of training and validation instances does not match stack and stack_size.'
-    train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos = 0, 0, 0, 0
+    positions = (0, 0, 0, 0)
     light_model = LightModel(light_model_list=['SERSIC'])
     for i in range(stacks):
         kdata, imdata = generate_stack(npix=npix, deltapix=deltapix, stack_size=stack_size, light_model=light_model)
-        train_inp_pos, train_lab_pos, val_inp_pos, val_lab_pos, num_train, num_val = save_stack(kdata=kdata,
-                                                                                                imdata=imdata,
-                                                                                                num_train=num_train,
-                                                                                                num_val=num_val,
-                                                                                                stack_size=stack_size,
-                                                                                                positions=(
-                                                                                                    train_inp_pos,
-                                                                                                    train_lab_pos,
-                                                                                                    val_inp_pos,
-                                                                                                    val_lab_pos),
-                                                                                                training_dir=training_dir)
+        # if not (num_train % 10000):
+        #     winsound.Beep(FREQ, DUR)
+        #     print(True)
+
+        positions, num_train, num_val = save_stack(kdata=kdata, imdata=imdata, num_train=num_train, num_val=num_val,
+                                                   stack_size=stack_size, positions=positions,
+                                                   training_dir=training_dir)
 
 
 def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
@@ -316,13 +321,14 @@ def simulation(npix, deltapix, stacks, stack_size, action: str):
     if func is None:
         raise ValueError(f'{action} is not a recognized action.')
     else:
-        func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, action=action.lower())
+        func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, val_split=VAL_SPLIT,
+             action=action.lower())
 
 
 def main():
     # Constant constructs #
     # The following constructs are shared by all generated lensing instances
-    simulation(npix=150, deltapix=0.1, stacks=3, stack_size=5, action='save')
+    simulation(npix=150, deltapix=0.1, stacks=100, stack_size=1000, action='save')
 
 
 if __name__ == '__main__':

@@ -1,8 +1,7 @@
 import matplotlib.pyplot as plt
 import numpy as np
-# from LensCNN import get_dir
 import glob
-from os.path import basename, isdir
+from os.path import basename
 from pathlib import Path
 
 
@@ -57,9 +56,9 @@ def get_data(data: dict):
 
 
 def main():
-    path = 'debug/Lens19'  # get_dir('lens', new=False, base='debug')
+
     flagged = ['Lens' + str(i) for i in [7, 13, 16, 18, 19]]
-    for folder in glob.glob('debug/Lens*/'):
+    for folder in glob.glob('debug/cross check/debug data/Lens*/'):
         files = glob.glob(folder + '*.npy')
         data = {}
         for file in files:
