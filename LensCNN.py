@@ -225,7 +225,7 @@ def npy_read(filename: str, start_row, num_rows):
 
 
 # This function defines the architecture, change it here.
-def create_model(loss_func, path_dir: str, kernel_size=(3, 3), pool_size=(2, 2), input_shape=(150, 150, 1)):
+def create_model(loss_func, path_dir: str, input_shape: tuple, kernel_size=(3, 3), pool_size=(2, 2)):
     """
     Creates a model according to the architecture defined inside.
     :param loss_func: Loss function to use.
@@ -555,8 +555,12 @@ def sanitize_path(path: str):
 def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
     model_dir = kwargs.get('model_name', '')
     model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
-    model_dir = sanitize_path(model_dir) if model_dir and not isdir(model_dir) else get_dir(
-        target='model', new=True, base='models/')
+    if model_dir and not isdir(model_dir):
+        model_dir = sanitize_path(model_dir)
+        Path(model_dir).mkdir(parents=True, exist_ok=True)
+    else:
+        model_dir = get_dir(target='model', new=True, base='models/')
+
     model_name = basename(model_dir)
     callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', False))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
