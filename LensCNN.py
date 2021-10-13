@@ -12,17 +12,18 @@ from os.path import isdir, isfile, basename, dirname
 import time
 from datetime import datetime
 from pickle import dump
-from re import findall, compile as rcompile, match,escape
+from re import findall, compile as rcompile, match as rmatch, escape
 
 
 class MyModelCheckpoint(ModelCheckpoint):
     def _save_model(self, epoch, logs=None, batch=None):
-        regex = rcompile(escape(dirname(self.filepath)) + r'\\[cC]heckpoint[-_\w]*epoch=\d{3}[-_\s]*val_loss=\d+.\d{4}\.h5')
+        regex = rcompile(
+            escape(dirname(self.filepath)) + r'\\[cC]heckpoint[-_\w]*epoch=\d{3}[-_\s]*val_loss=\d+.\d{4}\.h5')
         prev_epoch = [f for f in glob.glob(f'{dirname(self.filepath)}/*.h5') if
                       regex.match(f) and f'epoch={epoch:03d}' in f]
         # epoch is in fact 1 less than the number of epoch running
         assert len(prev_epoch) <= 1, 'Found more than one previous epoch.'
-        prev_epoch = prev_epoch[0] if len(prev_epoch) == 1 else []
+        prev_epoch = prev_epoch[0] if len(prev_epoch) == 1 else None
         if prev_epoch:
             os.remove(prev_epoch)
         super()._save_model(epoch=epoch, logs=logs, batch=batch)
@@ -184,7 +185,7 @@ def get_file(text: str = 'Input path:'):
     txt = input(text)
     while not isfile(txt):
         txt = input(f'File does not exist!\n{text}')
-    return txt
+    return sanitize_path(txt)
 
 
 def npy_read(filename: str, start_row, num_rows):
@@ -369,11 +370,12 @@ def isnat(test):
 
 
 # Add/change callbacks IN this function
-def get_cbs(model_dir: str, init_epoch: int = 0):
+def get_cbs(model_dir: str, init_epoch: int = 0, auto=False):
     """
     Construct a list of callbacks to be used in model.fit().
     :param model_dir: Model name (used to identify model in classes which save logs to file).
     :param init_epoch: Starting epoch.
+    :param auto: False by default. Providing a list of keys will append the respective callbacks.
     :return: List of keras callbacks.
     """
     date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
@@ -410,26 +412,31 @@ def get_cbs(model_dir: str, init_epoch: int = 0):
                      save_weights_only=False)]
     cb_temp = ['Epoch Timing', 'Model Checkpoint']
 
-    flag = input(cb_menu(cb_names)).lower()
-    # 3/3 Finally, add an option to the menu using the assigned id from step 2
-    while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
-        try:
-            if not cb_dict[flag] in callbacks:
-                callbacks.append(cb_dict[flag])
-                cb_temp.append(cb_names[flag])
-                print(f'Added callback {cb_names[flag]}.\n{len(callbacks)}/{len(cb_dict) + 1} callbacks enabled.')
-                cb_names.pop(flag)
+    if not auto:
+        flag = input(cb_menu(cb_names)).lower()
+        # 3/3 Finally, add an option to the menu using the assigned id from step 2
+        while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
+            try:
+                if not cb_dict[flag] in callbacks:
+                    callbacks.append(cb_dict[flag])
+                    cb_temp.append(cb_names[flag])
+                    print(f'Added callback {cb_names[flag]}.\n{len(callbacks)}/{len(cb_dict) + 1} callbacks enabled.')
+                    cb_names.pop(flag)
+                else:
+                    print('Callback exists. Nothing added.')
+            except KeyError:
+                if not isletter(flag, 'p'):
+                    print(f'Unrecognized key: {flag}, no callback added.')
+                else:
+                    print(cb_menu(cb_names))
+            if not len(callbacks) - 1 == len(cb_dict):
+                flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n').lower()
             else:
-                print('Callback exists. Nothing added.')
-        except KeyError:
-            if not isletter(flag, 'p'):
-                print(f'Unrecognized key: {flag}, no callback added.')
-            else:
-                print(cb_menu(cb_names))
-        if not len(callbacks) - 1 == len(cb_dict):
-            flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n').lower()
-        else:
-            print('All callbacks enabled. Proceeding.')
+                print('All callbacks enabled. Proceeding.')
+    else:
+        for key in auto:
+            callbacks.append(cb_dict.get(key))
+            cb_temp.append(cb_names.get(key))
 
     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
 
@@ -453,19 +460,19 @@ def validate_data(training: tuple, validation: tuple):
 
 def get_dir(target, new: bool, base=''):
     if base:
+        base = sanitize_path(base) + '/'
         if not isdir(base):
             Path(base).mkdir(parents=True, exist_ok=True)
-        base = base.replace('\\', '/').removesuffix('/')
-    path_dir = (base + '/' if base else '') + input(f'Input {target} directory: {base + "/" if base else ""}')
+    path_dir = base + input(f'Input {target} directory: {base}')
     while (isdir(path_dir) and new) or (not isdir(path_dir) and not new):
         prompt = f'Directory {path_dir} exists!' if new else f'Directory {path_dir} does not exist!'
         print(prompt)
-        path_dir = (base + '/' if base else '') + input(f'Input {target} directory: {base + "/" if base else ""}')
+        path_dir = base + input(f'Input {target} directory: {base}')
 
     if new:
         Path(path_dir).mkdir()
 
-    return path_dir
+    return sanitize_path(path_dir)
 
 
 def opts_menu(txt: str, resp_dic: dict = None):
@@ -501,27 +508,58 @@ def dic_menu(dic: dict, prompt=''):
     return result
 
 
-def initiate_training():
-    batch_size = get_nat('Batch size')
-    epochs = get_nat('Number of epochs')
-    # input_training = get_file(text='Training input path:')
-    # label_training = get_file(text='Training label path:')
-    # input_validation = get_file(text='Validation input path:')
-    # label_validation = get_file(text='Validation label path:')
+def initiate_training(**kwargs):
+    batch_size = kwargs.get('batch_size')
+    batch_size = batch_size or get_nat('Batch size')
+    epochs = kwargs.get('epochs')
+    epochs = epochs or get_nat('Number of epochs')
+    training_dir = sanitize_path(kwargs.get('training_dir'))
+    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
+    dirs = {}
+    keys = []
+    keys1, keys2 = ['training', 'validation'], ['input', 'label']
+    for key1 in keys1:
+        for key2 in keys2:
+            keys.append('_'.join([key1, key2]))
+            for file in glob.glob('/'.join([training_dir, '*.npy'])):
+                file = sanitize_path(file)
+                if key2 in basename(file) and key1 in basename(file):
+                    dirs.update({keys[-1]: file})
+    if len(dirs) < 4:
+        missing = [i for i in keys if i not in dirs.keys()]
+        for key in missing:
+            print(f'{key.replace("_", " ")} file not found.')
+            temp_dir = get_file(key.replace('_', ' ') + ':')
+            dirs.update({key: temp_dir})
+
+    # training_input = dirs.get('training_input')
+    # training_label = dirs.get('training_label')
+    # validation_input = dirs.get('validation_input')
+    # validation_label = dirs.get('validation_label')
 
     ### USED FOR TESTING. Smaller sets for faster epochs
-    input_training = 'TEST_input.npy'
-    label_training = 'TEST_label.npy'
-    input_validation = 'TEST_input.npy'
-    label_validation = 'TEST_label.npy'
+    training_input = 'TEST_input.npy'
+    training_label = 'TEST_label.npy'
+    validation_input = 'TEST_input.npy'
+    validation_label = 'TEST_label.npy'
+    return [batch_size, epochs, (training_input, training_label), (validation_input, validation_label)]
 
-    return [batch_size, epochs, (input_training, label_training), (input_validation, label_validation)]
+
+def sanitize_path(path: str):
+    if isinstance(path, str):
+        path = path.replace('\\', '/')
+        return path.removesuffix('/').removeprefix('/')
+    return path
 
 
-def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2)):
-    model_dir, model_name = (lambda x: (x, basename(x)))(get_dir(target='model', new=True, base='models/'))
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0)
-    batch_size, epochs, training, validation = initiate_training()
+def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
+    model_dir = kwargs.get('model_name', '')
+    model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
+    model_dir = sanitize_path(model_dir) if model_dir and not isdir(model_dir) else get_dir(
+        target='model', new=True, base='models/')
+    model_name = basename(model_dir)
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', False))
+    batch_size, epochs, training, validation = initiate_training(**kwargs)
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
     # input_training, label_training = training
     # input_validation, label_validation = validation
@@ -537,7 +575,9 @@ def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2)):
     # temp is a list whose contents are to be appended to the log file.
     # Mostly used in the model loading logging strategy.
     log.append(callback_log)
-    log.append(input('Additional Comments:') + '\n')
+    comments = kwargs.get('comments')
+    comments = comments or input('Additional Comments:')
+    log.append(comments + '\n')
     write_log(model_dir=model_dir, log=log)
     print(f'Building model {model_name}.')
     model = create_model(loss_func=loss_func, path_dir=model_dir, kernel_size=kernel_size, pool_size=pool_size,
@@ -548,7 +588,9 @@ def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2)):
 
 
 def dir_menu(pattern: str, prompt: str, sanitize=''):
-    options = (lambda y: dict(zip(range(len(y)), y)))([x.removeprefix(sanitize) for x in glob.glob(pattern)])
+    dirs = [sanitize_path(x).removeprefix(sanitize) for x in glob.glob(pattern)]
+    options = dict(zip(range(len(dirs)), dirs))
+
     if options:
         return dic_menu(dic=options, prompt=prompt)
     else:
@@ -563,7 +605,7 @@ def load_cnn(**kwargs):
 
     batch_size, epochs, training, validation = initiate_training()
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
-    init_epoch = int(match(r'.*epoch=(\d{3}).*', model_to_load).group(1))
+    init_epoch = int(rmatch(r'.*epoch=(\d{3}).*', model_to_load).group(1))
     callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch)
     print('Preparing log file.')
     log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
