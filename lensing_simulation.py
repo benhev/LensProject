@@ -313,13 +313,13 @@ def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     return 0
 
 
-def simulation(npix, deltapix, stacks, stack_size, action: str):
+def simulation(npix, deltapix, stacks, stack_size, action: str,val_split=VAL_SPLIT):
     options = {'save': generate_training, 'save_img': generate_image, 'show': generate_image}
     func = options.get(action.lower(), None)
     if func is None:
         raise ValueError(f'{action} is not a recognized action.')
     else:
-        return func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, val_split=VAL_SPLIT,
+        return func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, val_split=val_split,
                     action=action.lower())
 
 
