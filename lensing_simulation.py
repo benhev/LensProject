@@ -34,8 +34,8 @@ def dist_check(lens_center, prev_centers, rng):
     return False  # True if len(prev_centers) == 0 else False
 
 
-
 def npy_write(filename: str, start_row, arr, size=None):
+    print(f'Writing to {filename} at {start_row}')
     # This function is a hack and does not use documented behavior, though it works.
     assert start_row >= 0 and isinstance(arr, np.ndarray)
     num_rows = len(arr) if len(arr.shape) > 1 else 1
@@ -65,7 +65,7 @@ def npy_write(filename: str, start_row, arr, size=None):
         # Get the number of elements in one 'row' by taking
         # a product over all other dimensions.
         row_size = np.prod(shape[1:])
-        start_byte = np.int64(start_row * row_size * dtype.itemsize)
+        start_byte = np.prod([start_row, row_size, dtype.itemsize], dtype='int64')
         file.seek(start_byte, 1)
         arr.tofile(file)
     return start_row + num_rows
@@ -295,9 +295,6 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
     light_model = LightModel(light_model_list=['SERSIC'])
     for i in range(stacks):
         kdata, imdata = generate_stack(npix=npix, deltapix=deltapix, stack_size=stack_size, light_model=light_model)
-        # if not (num_train % 10000):
-        #     winsound.Beep(FREQ, DUR)
-        #     print(True)
 
         positions, num_train, num_val = save_stack(kdata=kdata, imdata=imdata, num_train=num_train, num_val=num_val,
                                                    stack_size=stack_size, positions=positions,
