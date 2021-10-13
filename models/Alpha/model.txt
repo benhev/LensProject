@@ -1,0 +1,21 @@
+Model Alpha
+Loss Function: mean_squared_error
+Conv. kernel size: (3, 3)
+Max and UpSampling pool size:(2, 2)
+====================================================================================================
+Initial training sequence started on 13/10/2021 at 18:43:34.
+90000 instances of 152x152 images with 1 color channels validated against 10000 test samples.
+Batch size: 100
+Number of Epochs: 10
+Training input file:training data/training_input.npy
+Training label file:training data/training_label.npy
+Validation input file:training data/validation_input.npy
+Validation label file:training data/validation_label.npy
+Callbacks: Epoch Timing, Model Checkpoint, TensorBoard, Best Checkpoint
+
+automated run
+
+
+	Epoch			Time			Best
+====================================================================================================
+	1			02:14:48	13/10/2021 20:58:24 with val_loss=0.275027871131897
