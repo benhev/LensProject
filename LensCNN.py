@@ -532,16 +532,16 @@ def initiate_training(**kwargs):
             temp_dir = get_file(key.replace('_', ' ') + ':')
             dirs.update({key: temp_dir})
 
-    # training_input = dirs.get('training_input')
-    # training_label = dirs.get('training_label')
-    # validation_input = dirs.get('validation_input')
-    # validation_label = dirs.get('validation_label')
+    training_input = dirs.get('training_input')
+    training_label = dirs.get('training_label')
+    validation_input = dirs.get('validation_input')
+    validation_label = dirs.get('validation_label')
 
     ### USED FOR TESTING. Smaller sets for faster epochs
-    training_input = 'TEST_input.npy'
-    training_label = 'TEST_label.npy'
-    validation_input = 'TEST_input.npy'
-    validation_label = 'TEST_label.npy'
+    # training_input = 'TEST_input.npy'
+    # training_label = 'TEST_label.npy'
+    # validation_input = 'TEST_input.npy'
+    # validation_label = 'TEST_label.npy'
     return [batch_size, epochs, (training_input, training_label), (validation_input, validation_label)]
 
 

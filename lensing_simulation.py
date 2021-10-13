@@ -299,7 +299,7 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
         positions, num_train, num_val = save_stack(kdata=kdata, imdata=imdata, num_train=num_train, num_val=num_val,
                                                    stack_size=stack_size, positions=positions,
                                                    training_dir=training_dir)
-
+    return training_dir
 
 def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     light_model = LightModel(light_model_list=['SERSIC'])
@@ -310,6 +310,7 @@ def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     stack_size *= stacks
     for i in range(stack_size):
         generate_instance(npix=npix, deltapix=deltapix, light_model=light_model, save_dir=img_dir, instance=i + 1)
+    return 0
 
 
 def simulation(npix, deltapix, stacks, stack_size, action: str):
@@ -318,8 +319,8 @@ def simulation(npix, deltapix, stacks, stack_size, action: str):
     if func is None:
         raise ValueError(f'{action} is not a recognized action.')
     else:
-        func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, val_split=VAL_SPLIT,
-             action=action.lower())
+        return func(npix=npix, deltapix=deltapix, stacks=stacks, stack_size=stack_size, val_split=VAL_SPLIT,
+                    action=action.lower())
 
 
 def main():
