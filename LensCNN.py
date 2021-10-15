@@ -3,7 +3,7 @@ import glob
 
 import numpy as np
 from tensorflow.keras.utils import Sequence as Keras_Sequence
-from tensorflow.keras import losses
+from tensorflow.keras import losses, optimizers, metrics
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
@@ -225,7 +225,8 @@ def npy_read(filename: str, start_row, num_rows):
 
 
 # This function defines the architecture, change it here.
-def create_model(loss_func, path_dir: str, input_shape: tuple, kernel_size=(3, 3), pool_size=(2, 2)):
+def create_model(loss_func, optimizer, metric, path_dir: str, input_shape: tuple, kernel_size=(3, 3), pool_size=(2, 2),
+                 ):
     """
     Creates a model according to the architecture defined inside.
     :param loss_func: Loss function to use.
@@ -253,7 +254,7 @@ def create_model(loss_func, path_dir: str, input_shape: tuple, kernel_size=(3, 3
     model.add(UpSampling2D(size=pool_size))
 
     model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same', kernel_initializer='he_normal'))
-    model.compile(loss=loss_func, optimizer='Adadelta', metrics=['accuracy'])
+    model.compile(loss=loss_func, optimizer=optimizer, metrics=metric)
 
     try:
         with open(f'{path_dir}/summary.txt', 'wt') as file:
@@ -324,15 +325,18 @@ def cb_menu(cb_names: dict):
 
 def create_log(batch_size, epochs, numsample, numval, input_training: str, input_validation: str,
                label_training: str, label_validation: str, input_shape=(100, 100, 1), kernel_size=(3, 3),
-               pool_size=(2, 2), loss_func=None, first_run=False, name: str = None, init_epoch: int = None,
+               pool_size=(2, 2), loss_func=None, optimizer=None, metric=None, first_run=False, name: str = None,
+               init_epoch: int = None,
                model_to_load=None):
     """
     Creates the log entry, whether for an existing file or for a first run
     """
     date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
-    if first_run and loss_func is not None and name is not None:
+    if first_run and all([loss_func, name, optimizer, metric]):
         temp = [f'Model {name}\n',
-                f'Loss Function: {loss_func.__name__}\n',
+                f'Loss Function: {loss_func if isinstance(loss_func, str) else loss_func.__name__}\n',
+                f'Optimizer: {optimizer if isinstance(optimizer, str) else optimizer._name}\n',
+                f'Metrics: ' + ', '.join([x if isinstance(x, str) else x.name for x in metric])+'\n',
                 f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n',
                 '=' * 100 + '\n',
                 f'Initial training sequence started on {date} at {tm}.\n']
@@ -368,6 +372,8 @@ def isnat(test):
     except ValueError:
         return False
 
+
+# TODO: Redo this function so that it creates callbacks when needed and requests the appropriate parameters
 
 # Add/change callbacks IN this function
 def get_cbs(model_dir: str, init_epoch: int = 0, auto=False):
@@ -552,13 +558,16 @@ def sanitize_path(path: str):
     return path
 
 
-def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
+def create_cnn(metric=metrics.RootMeanSquaredError(), loss_func=losses.mse, optimizer=optimizers.Adadelta(),
+               kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
     model_dir = kwargs.get('model_name', '')
     model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
     if model_dir and not isdir(model_dir):
         model_dir = sanitize_path(model_dir)
         Path(model_dir).mkdir(parents=True, exist_ok=True)
     else:
+        if model_dir:
+            print(f'Directory {model_dir} exists!')
         model_dir = get_dir(target='model', new=True, base='models/')
 
     model_name = basename(model_dir)
@@ -572,20 +581,19 @@ def create_cnn(loss_func=losses.mse, kernel_size=(3, 3), pool_size=(2, 2), **kwa
     print('Creating model directory.')
     print('Preparing log file.')
     log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
-                     input_training=training[0], input_validation=validation[0],
-                     label_training=training[1], label_validation=validation[1], input_shape=input_shape,
-                     pool_size=pool_size, kernel_size=kernel_size, first_run=True, name=model_name,
-                     loss_func=loss_func)
-    # temp is a list whose contents are to be appended to the log file.
-    # Mostly used in the model loading logging strategy.
+                     input_training=training[0], input_validation=validation[0], label_training=training[1],
+                     label_validation=validation[1], input_shape=input_shape, kernel_size=kernel_size,
+                     pool_size=pool_size, loss_func=loss_func, optimizer=optimizer, metric=metric, first_run=True,
+                     name=model_name)
     log.append(callback_log)
     comments = kwargs.get('comments')
     comments = comments or input('Additional Comments:')
     log.append(comments + '\n')
     write_log(model_dir=model_dir, log=log)
     print(f'Building model {model_name}.')
-    model = create_model(loss_func=loss_func, path_dir=model_dir, kernel_size=kernel_size, pool_size=pool_size,
-                         input_shape=input_shape)
+
+    model = create_model(loss_func=loss_func, optimizer=optimizer, metric=metric, path_dir=model_dir,
+                         input_shape=input_shape, kernel_size=kernel_size, pool_size=pool_size)
 
     train_model(model=model, batch_size=batch_size, epochs=epochs, training=training, validation=validation,
                 callbacks=callbacks, model_dir=model_dir)
@@ -613,9 +621,9 @@ def load_cnn(**kwargs):
     callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch)
     print('Preparing log file.')
     log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
-                     input_training=training[0], input_validation=validation[0],
-                     label_training=training[1], label_validation=validation[1],
-                     input_shape=input_shape, init_epoch=init_epoch, model_to_load=model_to_load)
+                     input_training=training[0], input_validation=validation[0], label_training=training[1],
+                     label_validation=validation[1], input_shape=input_shape, init_epoch=init_epoch,
+                     model_to_load=model_to_load)
     log.append(callback_log)
     log.append(input('Additional Comments:') + '\n')
     write_log(model_dir=model_dir, log=log, insert=True)

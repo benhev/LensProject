@@ -36,11 +36,12 @@ def my_get(seek: list, dic: dict, default=None):
 
 
 def my_reshape(arr):
-    if len(arr.shape) == 3 and arr.shape[2] == 1:
-        return arr.reshape(arr.shape[:-1])
-    else:
-        return arr
-
+    if arr is not None:
+        if len(arr.shape) == 3 and arr.shape[2] == 1:
+            return arr.reshape(arr.shape[:-1])
+        else:
+            return arr
+    return None
 
 def get_data(data: dict):
     alpha_x = my_reshape(my_get(seek=['alpha_x'], dic=data))
