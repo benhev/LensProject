@@ -12,6 +12,29 @@ import time
 from datetime import datetime
 from pickle import dump
 from re import findall, compile as rcompile, match as rmatch, escape
+from builtins import print as bprint, input as binput
+
+MODEL_DIR = '.'
+DATE, TIME = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
+
+def out_to_file(func):
+    def wrapper(*args):
+        func(*args)
+        with open(f'{MODEL_DIR}/output--{DATE.replace("/", "-")}_{TIME.replace(":", "")}.txt', 'a') as file:
+            func(*args, file=file)
+
+    return wrapper
+
+
+print = out_to_file(print)
+
+
+def input(*args):
+    print(*args)
+    rv = binput()
+    with open(f'{MODEL_DIR}/output--{DATE.replace("/", "-")}_{TIME.replace(":", "")}.txt', 'a') as file:
+        bprint(f'\nUser input: {rv}\n', file=file)
+    return rv
 
 
 class MyModelCheckpoint(ModelCheckpoint):
@@ -654,8 +677,9 @@ def sanitize_path(path: str):
     return path
 
 
-def create_cnn(metric=[metrics.RootMeanSquaredError()], loss_func=losses.mse, optimizer=optimizers.Adadelta(),
+def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(),
                kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
+    metric = metric or [metrics.RootMeanSquaredError()]
     model_dir = kwargs.get('model_name', '')
     model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
     if model_dir and not isdir(model_dir):
@@ -666,6 +690,11 @@ def create_cnn(metric=[metrics.RootMeanSquaredError()], loss_func=losses.mse, op
             print(f'Directory {model_dir} exists!')
         model_dir = get_dir(target='model', new=True, base='models/')
 
+    # This is just here for printing output to output log
+    # all functions which actually require model_dir accept it as a parameter
+    # see print and input modules in this file
+    global MODEL_DIR
+    MODEL_DIR = model_dir
     model_name = basename(model_dir)
     callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
@@ -708,6 +737,11 @@ def dir_menu(pattern: str, prompt: str, sanitize=''):
 def load_cnn(**kwargs):
     model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
         dir_menu(pattern='models/*/', prompt='Choose model to load'))
+    # This is just here for printing output to output log
+    # all functions which actually require model_dir accept it as a parameter
+    # see print and input modules in this file
+    global MODEL_DIR
+    MODEL_DIR = model_dir
 
     model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
 
@@ -782,7 +816,10 @@ def leave(**kwargs):
 def main():
     # opts_menu('(L)oad/(C)reate model? ', {'c': create_cnn, 'l': load_cnn})()
     actions = {'c': create_cnn, 'l': load_cnn, '': leave}
-    actions.get(dic_menu(prompt='Load/Create model?\nEnter to exit.', dic={'c': 'Create', 'l': 'Load'}, quit_option={'': ''},key=True))()
+    actions.get(
+        dic_menu(prompt='Load/Create model?\nEnter to exit.', dic={'c': 'Create', 'l': 'Load'}, quit_option={'': ''},
+                 key=True))()
+    os.remove(f'output--{DATE.replace("/", "-")}_{TIME.replace(":", "")}.txt')
 
 
 if __name__ == '__main__':
