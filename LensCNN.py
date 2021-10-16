@@ -1,11 +1,10 @@
 import os
 import glob
-
 import numpy as np
 from tensorflow.keras.utils import Sequence as Keras_Sequence
 from tensorflow.keras import losses, optimizers, metrics
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Conv2D, Dropout, Flatten, MaxPool2D, UpSampling2D
+from tensorflow.keras.layers import Conv2D, MaxPool2D, UpSampling2D  # , Dropout, Flatten
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
 from pathlib import Path
 from os.path import isdir, isfile, basename, dirname
@@ -16,6 +15,14 @@ from re import findall, compile as rcompile, match as rmatch, escape
 
 
 class MyModelCheckpoint(ModelCheckpoint):
+
+    def __init__(self, model_dir, verbose=1, save_weights_only=False, mode='auto', save_freq='epoch', options=None,
+                 **kwargs):
+        filepath = model_dir + '/Checkpoint/Checkpoint--epoch={epoch:03d}--val_loss={val_loss:.4f}.h5'
+        super().__init__(filepath=filepath, verbose=verbose, mode=mode, options=options, save_freq=save_freq,
+                         save_weights_only=save_weights_only, **kwargs)
+
+    # This method has a signature issue. (See BestCheckpoint._save_model)
     def _save_model(self, epoch, logs=None, batch=None):
         regex = rcompile(
             escape(dirname(self.filepath)) + r'\\[cC]heckpoint[-_\w]*epoch=\d{3}[-_\s]*val_loss=\d+.\d{4}\.h5')
@@ -35,6 +42,15 @@ class BestCheckpoint(ModelCheckpoint):
     Identical to ModelCheckpoint otherwise.
     """
 
+    def __init__(self, model_dir, monitor='val_loss', verbose=1, save_weights_only=False,
+                 mode='min', options=None, **kwargs):
+        date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
+        filepath = model_dir \
+                   + f'/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
+                   + 'epoch={' 'epoch:03d}--val_loss={val_loss:.4f}.h5'
+        super().__init__(filepath=filepath, monitor=monitor, verbose=verbose, save_best_only=True,
+                         save_weights_only=save_weights_only, mode=mode, options=options, **kwargs)
+
     # There is an issue with the signature of this method, for some reason it is dynamically called with an argument
     # which is undeclared (batch=None). Through trial and error I got this to work, it might require some tinkering if
     # tensorflow/keras is updated. This may also be an issue with conflicting definitions of the keras
@@ -45,7 +61,7 @@ class BestCheckpoint(ModelCheckpoint):
         An extension of existing method in ModelCheckpoint.
         """
         current = logs.get(self.monitor)
-        log_dir = os.path.dirname(self.filepath).removesuffix('/BestFit') + '/model.txt'
+        log_dir = dirname(self.filepath).removesuffix('/BestFit') + '/model.txt'
         if self.monitor_op(current, self.best):
             with open(log_dir, 'rt') as file:
                 txt = file.readlines()
@@ -336,7 +352,7 @@ def create_log(batch_size, epochs, numsample, numval, input_training: str, input
         temp = [f'Model {name}\n',
                 f'Loss Function: {loss_func if isinstance(loss_func, str) else loss_func.__name__}\n',
                 f'Optimizer: {optimizer if isinstance(optimizer, str) else optimizer._name}\n',
-                f'Metrics: ' + ', '.join([x if isinstance(x, str) else x.name for x in metric])+'\n',
+                f'Metrics: ' + ', '.join([x if isinstance(x, str) else x.name for x in metric]) + '\n',
                 f'Conv. kernel size: {kernel_size}\nMax and UpSampling pool size:{pool_size}\n',
                 '=' * 100 + '\n',
                 f'Initial training sequence started on {date} at {tm}.\n']
@@ -373,37 +389,103 @@ def isnat(test):
         return False
 
 
-# TODO: Redo this function so that it creates callbacks when needed and requests the appropriate parameters
+# def get_cbs(model_dir: str, init_epoch: int = 0, auto=False):
+#     """
+#         Construct a list of callbacks to be used in model.fit().
+#         :param model_dir: Model name (used to identify model in classes which save logs to file).
+#         :param init_epoch: Starting epoch.
+#         :param auto: False by default. Providing a list of keys will append the respective callbacks.
+#         :return: List of keras callbacks.
+#         """
+#     date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
+#
+#     # 1/3 Add callbacks here
+#     tb = TensorBoard(log_dir=f'logs/{basename(model_dir)}')  # TensorBoard
+#     mbst = BestCheckpoint(model_dir=model_dir)  # Best Model Checkpoint
+#     estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
+#     redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
+#                               min_delta=1e-4)  # Adaptive Learning Rate
+#     # 2/3 Then assign an id and add the new callback to the dictionaries
+#     cb_names = {'tb': 'TensorBoard',
+#                 'mbst': 'Best Checkpoint',
+#                 'estop': 'Early Stopping',
+#                 'redlr': 'Reduce LR on Plateau'}
+#     cb_dict = {'tb': tb,
+#                'mbst': mbst,
+#                'estop': estop,
+#                'redlr': redlr}
+#
+#     # IMPORTANT NOTE:
+#     # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly.
+#     # It MUST precede BestCheckpoint in the list of callbacks.
+#     # As it is currently, BestCheckpoint is always added after TimeHistory.
+#     # No error will be thrown over this but it will seamlessly affect the log files, beware!
+#     # (See comments in BestCheckpoint._save_model() method)
+#     callbacks = [TimeHistory(name=basename(model_dir), initial_epoch=init_epoch),
+#                  # ModelCheckpoint(filepath=f'{model_dir}/Checkpoint.h5', save_freq='epoch', verbose=1,
+#                  MyModelCheckpoint(model_dir=model_dir)]
+#     cb_temp = ['Epoch Timing', 'Model Checkpoint']
+#
+#     if not auto:
+#         flag = input(cb_menu(cb_names)).lower()
+#         # 3/3 Finally, add an option to the menu using the assigned id from step 2
+#         while not (isletter(flag, 'q') or len(callbacks) - 2 == len(cb_dict)):
+#             try:
+#                 if not cb_dict[flag] in callbacks:
+#                     callbacks.append(cb_dict[flag])
+#                     cb_temp.append(cb_names[flag])
+#                     print(f'Added callback {cb_names[flag]}.\n{len(callbacks)}/{len(cb_dict) + 1} callbacks enabled.')
+#                     cb_names.pop(flag)
+#                 else:
+#                     print('Callback exists. Nothing added.')
+#             except KeyError:
+#                 if not isletter(flag, 'p'):
+#                     print(f'Unrecognized key: {flag}, no callback added.')
+#                 else:
+#                     print(cb_menu(cb_names))
+#             if not len(callbacks) - 1 == len(cb_dict):
+#                 flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n').lower()
+#             else:
+#                 print('All callbacks enabled. Proceeding.')
+#     else:
+#         for key in auto:
+#             callbacks.append(cb_dict.get(key))
+#             cb_temp.append(cb_names.get(key))
+#
+#     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
+
+
+def sanitize_param(param):
+    try:
+        param = int(param)
+    except ValueError:
+        try:
+            param = float(param)
+        except ValueError:
+            pass
+    return param
+
 
 # Add/change callbacks IN this function
-def get_cbs(model_dir: str, init_epoch: int = 0, auto=False):
-    """
-    Construct a list of callbacks to be used in model.fit().
-    :param model_dir: Model name (used to identify model in classes which save logs to file).
-    :param init_epoch: Starting epoch.
-    :param auto: False by default. Providing a list of keys will append the respective callbacks.
-    :return: List of keras callbacks.
-    """
-    date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
-
-    # 1/3 Add callbacks here
-    tb = TensorBoard(log_dir=f'logs/{basename(model_dir)}')  # TensorBoard
-    mbst = BestCheckpoint(
-        filepath=f'{model_dir}/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' + 'epoch={epoch:03d}--val_loss={val_loss:.4f}.h5',
-        monitor='val_loss', save_best_only=True, verbose=1, save_weights_only=False)  # Best Model Checkpoint
-    estop = EarlyStopping(monitor='val_loss', min_delta=0.001, patience=3, mode='min', verbose=1)  # Early Stopping
-    redlr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=5, verbose=1, mode='min',
-                              min_delta=1e-4)  # Adaptive Learning Rate
-    # 2/3 Then assign an id and add the new callback to the dictionaries
+def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
     cb_names = {'tb': 'TensorBoard',
-                'mbst': 'Best Checkpoint',
+                'bst': 'Best Checkpoint',
                 'estop': 'Early Stopping',
                 'redlr': 'Reduce LR on Plateau'}
-    cb_dict = {'tb': tb,
-               'mbst': mbst,
-               'estop': estop,
-               'redlr': redlr}
-
+    cb_dict = {'tb': TensorBoard,
+               'bst': BestCheckpoint,
+               'estop': EarlyStopping,
+               'redlr': ReduceLROnPlateau}
+    kwargs_dic = {'tb': {'log_dir': f'logs/{basename(model_dir)}', 'histogram_freq': 0, 'write_graph': True,
+                         'write_images': False, 'write_steps_per_second': False, 'update_freq': 'epoch',
+                         'profile_batch': 2, 'embeddings_freq': 0, 'embeddings_metadata': None},
+                  'bst': {'model_dir': model_dir, 'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
+                          'mode': 'min', 'options': None},
+                  'estop': {'monitor': 'val_loss', 'min_delta': 1e-3, 'patience': 5, 'mode': 'auto', 'verbose': 1,
+                            'baseline': None, 'restore_best_weights': False},
+                  'redlr': {'monitor': 'val_loss', 'factor': 0.2, 'patience': 5, 'verbose': 1, 'mode': 'auto',
+                            'min_delta': 1e-4, 'cooldown': 0, 'min_lr': 0}}
+    num_cbs = len(cb_dict)
     # IMPORTANT NOTE:
     # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly.
     # It MUST precede BestCheckpoint in the list of callbacks.
@@ -411,40 +493,52 @@ def get_cbs(model_dir: str, init_epoch: int = 0, auto=False):
     # No error will be thrown over this but it will seamlessly affect the log files, beware!
     # (See comments in BestCheckpoint._save_model() method)
     callbacks = [TimeHistory(name=basename(model_dir), initial_epoch=init_epoch),
-                 # ModelCheckpoint(filepath=f'{model_dir}/Checkpoint.h5', save_freq='epoch', verbose=1,
-                 MyModelCheckpoint(
-                     filepath=model_dir + '/Checkpoint/Checkpoint--epoch={epoch:03d}--val_loss={val_loss:.4f}.h5',
-                     save_freq='epoch', verbose=1,
-                     save_weights_only=False)]
+                 MyModelCheckpoint(model_dir=model_dir)]
     cb_temp = ['Epoch Timing', 'Model Checkpoint']
 
-    if not auto:
-        flag = input(cb_menu(cb_names)).lower()
-        # 3/3 Finally, add an option to the menu using the assigned id from step 2
-        while not (isletter(flag, 'q') or len(callbacks) - 1 == len(cb_dict)):
-            try:
-                if not cb_dict[flag] in callbacks:
-                    callbacks.append(cb_dict[flag])
-                    cb_temp.append(cb_names[flag])
-                    print(f'Added callback {cb_names[flag]}.\n{len(callbacks)}/{len(cb_dict) + 1} callbacks enabled.')
-                    cb_names.pop(flag)
-                else:
-                    print('Callback exists. Nothing added.')
-            except KeyError:
-                if not isletter(flag, 'p'):
-                    print(f'Unrecognized key: {flag}, no callback added.')
-                else:
-                    print(cb_menu(cb_names))
-            if not len(callbacks) - 1 == len(cb_dict):
-                flag = input('Add another? (q) to exit callback selection, (p) to print remaining callbacks.\n').lower()
+    if auto is None:
+        cb_prompt = f'Select callbacks to utilize.\nNote: time logging and model checkpoint are on by default and ' \
+                    f'cannot be turned off\nas they are necessary for epoch timing and model saving (' \
+                    f'respectively).\nInput \'q\' to quit this menu.'
+        user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'quit'})
+        while not (user_inp == 'q' or len(callbacks) - 2 == num_cbs):
+            key_prompt = f' parameter values for {cb_names.get(user_inp)} are listed.\nChoose parameter to ' \
+                         f'modify or press Enter to approve and continue. '
+            temp_kwargs = kwargs_dic.get(user_inp)
+            temp_key = dic_menu(temp_kwargs, prompt='Default' + key_prompt, key=True, quit_option={'': 'quit'})
+            while temp_key:
+                set_param(key=temp_key, dic=temp_kwargs)
+                temp_key = dic_menu(temp_kwargs, prompt='Current' + key_prompt, key=True, quit_option={'': 'quit'})
+            temp_callback = cb_dict.pop(user_inp)(**temp_kwargs)
+            temp_name = cb_names.pop(user_inp)
+            callbacks.append(temp_callback)
+            cb_temp.append(temp_name)
+            print(f'Added callback {temp_name}.\n{len(callbacks)}/{num_cbs + 2} callbacks enabled.')
+            if len(callbacks) - 2 != num_cbs:
+                user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'Quit'})
             else:
                 print('All callbacks enabled. Proceeding.')
     else:
-        for key in auto:
-            callbacks.append(cb_dict.get(key))
-            cb_temp.append(cb_names.get(key))
+        for name in auto:
+            temp_kwargs = kwargs_dic.get(name)
+            if isinstance(auto, dict) and isinstance(auto.get(name), dict):
+                [temp_kwargs.update({key: auto.get(name).get(key, temp_kwargs.get(key))}) for key in temp_kwargs]
+            temp_callback = cb_dict.get(name)(**temp_kwargs)
+            temp_name = cb_names.get(name)
+            callbacks.append(temp_callback)
+            cb_temp.append(temp_name)
 
     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
+
+
+def set_param(key, dic: dict):
+    prompt = f'Changing value of {key}.\nLeave blank to leave field unchanged.\n{key}='
+    user_inp = sanitize_param(input(prompt))
+    while user_inp and not isinstance(user_inp, type(dic.get(key))):
+        print('Incorrect data type.')
+        user_inp = sanitize_param(input(prompt))
+    if user_inp:
+        dic.update({key: user_inp})
 
 
 def get_nat(name: str):
@@ -498,20 +592,27 @@ def opts_menu(txt: str, resp_dic: dict = None):
     return resp_dic.get(response, response)
 
 
-def dic_menu(dic: dict, prompt=''):
-    if len(dic) == 1:
-        return list(dic.values())[0]
-    line_length = np.max([len(x) for x in dic.values()])
-    line_length = np.max([line_length + 5, len(prompt), 50])
+def dic_menu(dic: dict, prompt='', pop=False, key=False, quit_option: dict = None):
+    if quit_option is None and len(dic) == 1:
+        return list(dic.keys() if key else dic.values())[0]
+    line_length = np.max([len(f'{x}') for x in dic.values()])
+    promp_length = np.max([len(x) for x in prompt.split('\n')])
+    line_length = np.max([line_length + 10, promp_length, 50])
     prompt = prompt + f'\n' + '-' * line_length + '\n' + '\n'.join(
         [f'{i} {"-" * 5}> {j}' for i, j in dic.items()]) + '\n' + '-' * line_length + '\n'
-    dic = dict(zip([str(x) for x in dic.keys()], dic.values()))
-
-    result = dic.get(input(prompt), None)
+    temp_dic = {str(k): v for k, v in dic.items()}
+    if quit_option:
+        temp_dic.update({str(k): v for k, v in quit_option.items()})
+    user_inp = input(prompt)
+    result = temp_dic.get(user_inp, None)
     while result is None:
         print('Unexpected response.')
-        result = dic.get(input(prompt), None)
-    return result
+        user_inp = input(prompt)
+        result = temp_dic.get(user_inp, None)
+    if pop:
+        dic.pop(sanitize_param(user_inp))
+
+    return sanitize_param(user_inp) if key else result
 
 
 def initiate_training(**kwargs):
@@ -553,7 +654,7 @@ def sanitize_path(path: str):
     return path
 
 
-def create_cnn(metric=metrics.RootMeanSquaredError(), loss_func=losses.mse, optimizer=optimizers.Adadelta(),
+def create_cnn(metric=[metrics.RootMeanSquaredError()], loss_func=losses.mse, optimizer=optimizers.Adadelta(),
                kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
     model_dir = kwargs.get('model_name', '')
     model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
@@ -566,7 +667,7 @@ def create_cnn(metric=metrics.RootMeanSquaredError(), loss_func=losses.mse, opti
         model_dir = get_dir(target='model', new=True, base='models/')
 
     model_name = basename(model_dir)
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', False))
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
     # input_training, label_training = training
@@ -674,8 +775,14 @@ def train_model(model: Sequential, batch_size, epochs, training, validation, cal
     print(f'{model.name} has finished training successfully.')
 
 
+def leave(**kwargs):
+    pass
+
+
 def main():
-    opts_menu('(L)oad/(C)reate model? ', {'c': create_cnn, 'l': load_cnn})()
+    # opts_menu('(L)oad/(C)reate model? ', {'c': create_cnn, 'l': load_cnn})()
+    actions = {'c': create_cnn, 'l': load_cnn, '': leave}
+    actions.get(dic_menu(prompt='Load/Create model?\nEnter to exit.', dic={'c': 'Create', 'l': 'Load'}, quit_option={'': ''},key=True))()
 
 
 if __name__ == '__main__':
