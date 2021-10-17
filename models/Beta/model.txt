@@ -18,6 +18,20 @@ automated run
 
 Beta completed training sequence successfully.
 
+--------------------------------------------------
+Additional training sequence initiated on 17/10/2021 at 14:56:44 for checkpoint /Checkpoint/Checkpoint--epoch=005--val_loss=0.2082.h5
+90000 instances of 152x152 images with 1 color channels validated against 10000 test samples.
+Batch size: 150
+Initial Epoch: 5
+Number of Epochs: 5
+Training input file:training data/training_input.npy
+Training label file:training data/training_label.npy
+Validation input file:training data/validation_input.npy
+Validation label file:training data/validation_label.npy
+Callbacks: Epoch Timing, Model Checkpoint, TensorBoard, Best Checkpoint
+
+
+
 	Epoch			Time			Best
 ====================================================================================================
 	1			01:15:27	14/10/2021 20:04:22 with val_loss=0.28148189187049866
@@ -25,3 +39,6 @@ Beta completed training sequence successfully.
 	3			01:15:16	14/10/2021 22:34:51 with val_loss=0.21287451684474945
 	4			01:14:43	14/10/2021 23:49:35 with val_loss=0.2085045725107193
 	5			01:14:26	15/10/2021 01:04:02 with val_loss=0.20823517441749573
+----------------------------------------------------------------------------------------------------
+	6			01:19:42	17/10/2021 16:16:30 with val_loss=0.2074430286884308
+	7			01:34:27	17/10/2021 17:50:58 with val_loss=0.20733004808425903

@@ -12,45 +12,6 @@ import time
 from datetime import datetime
 from pickle import dump
 from re import compile as rcompile, match as rmatch, escape
-from builtins import print as bprint, input as binput
-
-# These global variables are used only so that the new definitions of print and input don't have to take a directory as
-# a parameter. Should you end up restoring these functions to their builtin form, these variables may be erased
-# provided a proper refactoring of the code is done - there are not many references to these variables.
-MODEL_DIR = '.'
-DATE, TIME = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
-
-
-def out_to_file(func):
-    """
-    Decorator used to modify builtins.print for printing to terminal as well as logging all prints to file.
-    :param func: the built in print function
-    :return: new print function
-    """
-
-    def wrapper(*args):
-        func(*args)
-        with open(f'{MODEL_DIR}/output--{DATE.replace("/", "-")}_{TIME.replace(":", "")}.txt', 'a') as file:
-            func(*args, file=file)
-
-    return wrapper
-
-
-# Decorate print
-print = out_to_file(print)
-
-
-def input(*args):
-    """
-    Custom input function to log user inputs to output log file.
-    :param args: same arguments as builtins.input
-    :return: input from user in the same format as builtins.input
-    """
-    print(*args)
-    rv = binput()
-    with open(f'{MODEL_DIR}/output--{DATE.replace("/", "-")}_{TIME.replace(":", "")}.txt', 'a') as file:
-        bprint(f'\nUser input: {rv}\n', file=file)
-    return rv
 
 
 class MyModelCheckpoint(ModelCheckpoint):
@@ -623,15 +584,17 @@ def set_param(key, dic: dict):
         dic.update({key: user_inp})
 
 
-def get_nat(name: str):
+def get_nat(name: str, limit: int = np.inf):
     """
     Gets a natural number from the user.
     :param name: Name of parameter to request, str.
+    :param limit: (Optional) Largest acceptable number.
     :return: Natural number from user.
     """
-    nat = input(f'{name}: ')
-    while not isnat(nat):
-        nat = input(f'{name} should be a positive integer.\n{name}: ')
+    nat = input(f'Enter an natural number' + (f' no larger than {limit}' if limit != np.inf else '') + f' for {name}: ')
+    while not (isnat(nat) or nat <= limit):
+        nat = input(f'{name} should be a positive integer' + (
+            f' no larger than {limit}.' if limit != np.inf else '.') + f'\n{name}: ')
     return int(nat)
 
 
@@ -653,12 +616,12 @@ def validate_data(training: tuple, validation: tuple):
 
 def get_dir(target, new: bool, base=''):
     """
-    Requests a directory rom the user.
-    :param target: The target of the directory, some name decribing the request, string.
+    Requests a directory from the user.
+    :param target: The target of the directory, some name describing the request, string.
     :param new: Should the directory exist (False) or not (True), boolean.
     :param base: Underlying path in which to create the new directory, string.
                  If path of base does not one will be created.
-    :return: directory as string.
+    :return: Sanitized directory as string.
     """
     if base:
         base = sanitize_path(base) + '/'
@@ -822,11 +785,6 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
             print(f'Directory {model_dir} exists!')
         model_dir = get_dir(target='model', new=True, base='models/')
 
-    # The global variables exist for printing output to output log as well as terminal
-    # all functions which actually require model_dir accept it as a parameter
-    # see print and input modules in this file
-    global MODEL_DIR
-    MODEL_DIR = model_dir
     model_name = basename(model_dir)
     callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
@@ -883,11 +841,7 @@ def load_cnn(**kwargs):
 
     model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
         dir_menu(pattern='models/*/', prompt='Choose model to load'))
-    # This is just here for printing output to output log
-    # all functions which actually require model_dir accept it as a parameter
-    # see the print decorator and input module in this file
-    global MODEL_DIR
-    MODEL_DIR = model_dir
+
     # Get model to load from possible saves in model_dir
     model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
 
@@ -997,10 +951,6 @@ def main():
     actions.get(
         dic_menu(prompt='Load/Create model?\nEnter to exit.', dic={'c': 'Create', 'l': 'Load'}, quit_option={'': ''},
                  key=True))()
-    # At the beginning of the program MODEL_DIR='.' such that print prints to files in os.getcwd().
-    # Until a model_dir is specified all output will be saved to the CWD.
-    # The start of this script is irrelevant for logging purposes and can be safely erased.
-    os.remove(f'output--{DATE.replace("/", "-")}_{TIME.replace(":", "")}.txt')
 
 
 if __name__ == '__main__':
