@@ -1,6 +1,5 @@
 from lenstronomy.Util.param_util import phi_q2_ellipticity as phiq2el
 from lenstronomy.Util.param_util import ellipticity2phi_q as el2phiq
-# from lenstronomy.Data.imaging_data import ImageData
 import matplotlib.pyplot as plt
 from matplotlib import gridspec
 from lenstronomy.Util.util import make_grid, array2image, make_grid_with_coordtransform
@@ -222,7 +221,7 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     image = to_img(image_model.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light,
                                      lens_light_add=False, kwargs_ps=None))
     kappa = to_img(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
-    #
+
     # For simulation of images - mainly testing purposes
     if save_dir is None:
         return [kappa, image]

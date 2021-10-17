@@ -4,7 +4,7 @@ import numpy as np
 from tensorflow.keras.utils import Sequence as Keras_Sequence
 from tensorflow.keras import losses, optimizers, metrics
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Conv2D, MaxPool2D, UpSampling2D  # , Dropout, Flatten
+from tensorflow.keras.layers import Conv2D, MaxPool2D, UpSampling2D  # , Dropout
 from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
 from pathlib import Path
 from os.path import isdir, isfile, basename, dirname
@@ -249,12 +249,7 @@ class LensSequence(Keras_Sequence):
         batch_x = npy_read(filename=self.x, start_row=idx, num_rows=self.batch_size)
         batch_y = npy_read(filename=self.y, start_row=idx, num_rows=self.batch_size)
 
-        # batch = list(zip(batch_x, batch_y))
-        # shuffle(batch)
         perm = np.random.permutation(len(batch_x))
-
-        # batch_x = np.array([item[0] for item in batch])
-        # batch_y = np.array([item[1] for item in batch])
 
         return batch_x[perm], batch_y[perm]
 
@@ -275,7 +270,7 @@ def get_file(text: str = 'Input path:'):
     """
     Function to ensure input exists as a file.
     :param text: Prompt text.
-    :return: Directory to existing file.
+    :return: Path to existing file.
     """
     txt = input(text)
     while not isfile(txt):
@@ -321,10 +316,8 @@ def npy_read(filename: str, start_row, num_rows):
         return flat.reshape((-1,) + shape[1:])
 
 
-#
 # This function defines the CNN architecture, change it here.
-def create_model(loss_func, optimizer, metric, path_dir: str, input_shape: tuple, kernel_size=(3, 3), pool_size=(2, 2),
-                 ):
+def create_model(loss_func, optimizer, metric, path_dir: str, input_shape: tuple, kernel_size=(3, 3), pool_size=(2, 2)):
     """
     Creates a model according to the architecture defined inside.
     :param loss_func: Loss function from tf.keras.losses (or custom or name according to TF docs).
@@ -348,7 +341,7 @@ def create_model(loss_func, optimizer, metric, path_dir: str, input_shape: tuple
     model.add(MaxPool2D(pool_size=pool_size, padding='same'))
 
     model.add(Conv2D(64, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
-    # model.add(Dropout(0.5))
+
     model.add(Conv2D(64, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
     model.add(UpSampling2D(size=pool_size))
 
@@ -380,43 +373,6 @@ def time_convert(seconds):
     seconds = np.mod(seconds, 60).astype('int')
 
     return f'{hrs:02d}:{mins:02d}:{seconds:02d}'
-
-
-# def isletter(tst: str, letter=None):
-#     """
-#     Checks if tst is a single letter.
-#     If letter is supplied checks whether the letters match (case insensitive).
-#     letter can be a list of letters
-#     """
-#     if len(tst) != 1:
-#         return False
-#     if isinstance(letter, list):
-#         for char in letter:
-#             if isletter(tst, char):
-#                 return True
-#         return False
-#
-#     elif letter is None:
-#         return tst.isalpha()
-#     else:
-#         assert isinstance(letter, str) and len(letter) == 1, f'"{letter}" cannot be longer than one character'
-#         # if letter.islower():
-#         #     return tst == letter or ord(tst) == ord(letter) - 32
-#         # else:
-#         #     return tst == letter or ord(tst) == ord(letter) + 32
-#         return tst.lower() == letter.lower()
-
-
-# def cb_menu(cb_names: dict):
-#     """
-#     Prints callback menu from dictionary of names. Used in get_cbs()
-#     """
-#     msg1 = f'Select callbacks to utilize. Note: time logging and model checkpoint are on by default and cannot be '
-#     msg2 = f'turned off as they are necessary for epoch timing and model saving (respectively).\nOptions:\n'
-#     msg3 = '-' * 60 + '\n' + '\n'.join([f'{i[0]} --> {i[1]}' for i in cb_names.items()])
-#     msg4 = '\n\nq -> Exit\np-> Print this menu\n' + '-' * 60 + '\nInexact inputs will yield no callbacks, keys are ' \
-#                                                                'case-sensitive.\n '
-#     return msg1 + msg2 + msg3 + msg4
 
 
 def create_log(batch_size: int, epochs: int, numsample: int, numval: int, input_training: str, input_validation: str,
@@ -629,7 +585,7 @@ def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
             callbacks.append(temp_callback)
             cb_temp.append(temp_name)
             print(f'Added callback {temp_name}.\n{len(callbacks)}/{num_cbs + 2} callbacks enabled.')
-            # Have we depleted all available callbacks?
+            # Have we exhausted the list of available callbacks?
             if len(callbacks) - 2 != num_cbs:
                 user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'Quit'})
             else:
@@ -827,7 +783,7 @@ def sanitize_path(path: str):
     """
     if isinstance(path, str):
         path = path.replace('\\', '/')
-        return path.removesuffix('/').removeprefix('/')
+        return path.strip(' /')
     return path
 
 
@@ -918,7 +874,7 @@ def dir_menu(pattern: str, prompt: str, sanitize=''):
         raise FileNotFoundError(f'No files/folders matching {pattern} found.')
 
 
-# TODO: incorporate kwargs for non terminal calls
+# TODO: incorporate kwargs for automated input
 def load_cnn(**kwargs):
     """
     Loads an existing convolutional neural network.
@@ -1010,10 +966,10 @@ def train_model(model: Sequential, batch_size, epochs, training, validation, cal
 
     input_training, label_training = training
     input_validation, label_validation = validation
-    train_sequence = LensSequence(x_set=input_training, y_set=label_training,
-                                  batch_size=batch_size)  # initialize a training sequence
-    test_sequence = LensSequence(x_set=input_validation, y_set=label_validation,
-                                 batch_size=batch_size)  # initialize a validation sequence
+    # initialize a training sequence
+    train_sequence = LensSequence(x_set=input_training, y_set=label_training, batch_size=batch_size)
+    # initialize a validation sequence
+    test_sequence = LensSequence(x_set=input_validation, y_set=label_validation, batch_size=batch_size)
     history = model.fit(train_sequence,
                         batch_size=batch_size,
                         initial_epoch=init_epoch,
