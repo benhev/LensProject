@@ -300,6 +300,7 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
                                                    training_dir=training_dir)
     return training_dir
 
+
 def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     light_model = LightModel(light_model_list=['SERSIC'])
     if action == 'save_img':
@@ -312,7 +313,7 @@ def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     return 0
 
 
-def simulation(npix, deltapix, stacks, stack_size, action: str,val_split=VAL_SPLIT):
+def simulation(npix, deltapix, stacks, stack_size, action: str, val_split=VAL_SPLIT):
     options = {'save': generate_training, 'save_img': generate_image, 'show': generate_image}
     func = options.get(action.lower(), None)
     if func is None:
