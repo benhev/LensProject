@@ -588,11 +588,11 @@ def get_nat(name: str, limit: int = np.inf):
     """
     Gets a natural number from the user.
     :param name: Name of parameter to request, str.
-    :param limit: (Optional) Largest acceptable number.
-    :return: Natural number from user.
+    :param limit: (Optional) Largest acceptable number, int.
+    :return: Natural number from user as integer.
     """
     nat = input(f'Enter an natural number' + (f' no larger than {limit}' if limit != np.inf else '') + f' for {name}: ')
-    while not (isnat(nat) or nat <= limit):
+    while not isnat(nat) or (isnat(nat) and int(nat) > limit):
         nat = input(f'{name} should be a positive integer' + (
             f' no larger than {limit}.' if limit != np.inf else '.') + f'\n{name}: ')
     return int(nat)
@@ -686,30 +686,21 @@ def dic_menu(dic: dict, prompt='', pop=False, key=False, quit_option: dict = Non
     return sanitize_param(user_inp) if key else result
 
 
-def initiate_training(**kwargs):
+def get_training_files(training_dir: str, validation=True):
     """
-    Gets initial meta-parameters of training session.
-    May be called with keyword arguments or nothing at all.
-    Whichever kwarg is supplied and valid will not be requested from the user.
-    
-    :batch_size: Batch size, int.
-    :epochs: Number of epochs to run, int.
-    :training_dir: Training directory containing numpy files with training and validation data, string.
-                   The function searches for files labelled with training/validation and input/label.
-                   It will attempt to find the proper keywords in the file name and assign that file to the proper variable.
-                   Files which were not found will be requested from the user.
-    
-    :return: List of batch size, number of epochs, (training input path, training label path), (validation input path, validation label path)
+    The function searches for files labelled with training/validation and input/label.
+    It will attempt to find the proper keywords in the file name and assign that file to the proper dictionary key in the format: (training/validation)_(input/label).
+    Files which were not found will be requested from the user.
+
+    :param training_dir: Training directory containing *.npy files, string.
+    :param validation: Search for validation data, bool. True by default.
+    :return: dictionary of paths by combinations of keys.
     """
-    batch_size = kwargs.get('batch_size')
-    batch_size = batch_size or get_nat('Batch size')
-    epochs = kwargs.get('epochs')
-    epochs = epochs or get_nat('Number of epochs')
-    training_dir = sanitize_path(kwargs.get('training_dir'))
-    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
     dirs = {}
     keys = []
-    keys1, keys2 = ['training', 'validation'], ['input', 'label']
+    keys1 = ['training', 'validation'] if validation else ['training']
+    keys2 = ['input', 'label']
+
     for key1 in keys1:
         for key2 in keys2:
             # Make a list with all possible combinations
@@ -727,6 +718,29 @@ def initiate_training(**kwargs):
             print(f'{key.replace("_", " ")} file not found.')
             temp_dir = get_file(key.replace('_', ' ') + ':')
             dirs.update({key: temp_dir})
+
+    return dirs
+
+
+def initiate_training(**kwargs):
+    """
+    Gets initial meta-parameters of training session.
+    May be called with keyword arguments or nothing at all.
+    Whichever kwarg is supplied and valid will not be requested from the user.
+    
+    :batch_size: Batch size, int.
+    :epochs: Number of epochs to run, int.
+    :training_dir: Training directory containing numpy files with training and validation data, string.
+    :return: List of batch size, number of epochs, (training input path, training label path), (validation input path, validation label path)
+    """
+    batch_size = kwargs.get('batch_size')
+    batch_size = batch_size or get_nat('Batch size')
+    epochs = kwargs.get('epochs')
+    epochs = epochs or get_nat('Number of epochs')
+    training_dir = sanitize_path(kwargs.get('training_dir'))
+    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
+
+    dirs = get_training_files(training_dir=training_dir)
 
     training_input = dirs.get('training_input')
     training_label = dirs.get('training_label')
@@ -820,7 +834,7 @@ def dir_menu(pattern: str, prompt: str, sanitize=''):
 
     :param pattern: glob.glob compatible pattern, string.
     :param prompt: Prompt to show user, string.
-    :param sanitize: (Optional) Directories to remove from the left.
+    :param sanitize: (Optional) Directories to remove from the left, string.
     :return: Directory of existing path as string.
     """
     dirs = [sanitize_path(x).removeprefix(sanitize) for x in glob.glob(pattern)]
@@ -913,7 +927,7 @@ def train_model(model: Sequential, batch_size, epochs, training, validation, cal
     :param validation: Validation files, double: (input,label).
     :param callbacks: List of callbacks, list.
     :param model_dir: Model directory, string.
-    :param init_epoch: (Optional) Initial epoch, int. 0 by default.
+    :param init_epoch: Initial epoch, int. 0 by default.
     """
     now = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S'))
     date, tm = now.split()
