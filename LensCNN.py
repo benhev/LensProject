@@ -591,7 +591,7 @@ def get_nat(name: str, limit: int = np.inf):
     :param limit: (Optional) Largest acceptable number, int.
     :return: Natural number from user as integer.
     """
-    nat = input(f'Enter an natural number' + (f' no larger than {limit}' if limit != np.inf else '') + f' for {name}: ')
+    nat = input('Enter a positive integer' + (f' no larger than {limit}' if limit != np.inf else '') + f' for {name}: ')
     while not isnat(nat) or (isnat(nat) and int(nat) > limit):
         nat = input(f'{name} should be a positive integer' + (
             f' no larger than {limit}.' if limit != np.inf else '.') + f'\n{name}: ')
