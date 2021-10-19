@@ -91,6 +91,21 @@ Callbacks: Epoch Timing, Model Checkpoint, TensorBoard, Best Checkpoint
 
 Beta completed training sequence successfully.
 
+--------------------------------------------------
+Additional training sequence initiated on 19/10/2021 at 01:48:56 for checkpoint /Checkpoint/Checkpoint--epoch=085--val_loss=0.1920.h5
+90000 instances of 152x152 images with 1 color channels validated against 10000 test samples.
+Batch size: 250
+Initial Epoch: 85
+Number of Epochs: 25
+Training input file:training data/training_input.npy
+Training label file:training data/training_label.npy
+Validation input file:training data/validation_input.npy
+Validation label file:training data/validation_label.npy
+Callbacks: Epoch Timing, Model Checkpoint, TensorBoard, Best Checkpoint
+
+
+Beta completed training sequence successfully.
+
 	Epoch			Time			Best
 ====================================================================================================
 	1			01:15:27	14/10/2021 20:04:22 with val_loss=0.28148189187049866
@@ -183,3 +198,29 @@ Beta completed training sequence successfully.
 	83			00:01:26	19/10/2021 01:10:23 with val_loss=0.19206152856349945
 	84			00:01:26	19/10/2021 01:11:49 with val_loss=0.1920223981142044
 	85			00:01:26	19/10/2021 01:13:15 with val_loss=0.19200150668621063
+----------------------------------------------------------------------------------------------------
+	86			00:01:26	19/10/2021 01:50:27 with val_loss=0.19197744131088257
+	87			00:01:26	19/10/2021 01:51:53 with val_loss=0.1919374167919159
+	88			00:01:26
+	89			00:01:26	19/10/2021 01:54:46 with val_loss=0.1918972134590149
+	90			00:01:26
+	91			00:01:26	19/10/2021 01:57:38 with val_loss=0.19185230135917664
+	92			00:01:26	19/10/2021 01:59:04 with val_loss=0.19184640049934387
+	93			00:01:26	19/10/2021 02:00:30 with val_loss=0.19182279706001282
+	94			00:01:26	19/10/2021 02:01:57 with val_loss=0.1917879581451416
+	95			00:01:25	19/10/2021 02:03:23 with val_loss=0.19176624715328217
+	96			00:01:26	19/10/2021 02:04:49 with val_loss=0.19174237549304962
+	97			00:01:25	19/10/2021 02:06:15 with val_loss=0.19173724949359894
+	98			00:01:26	19/10/2021 02:07:41 with val_loss=0.1917010098695755
+	99			00:01:26	19/10/2021 02:09:08 with val_loss=0.19168876111507416
+	100			00:01:26	19/10/2021 02:10:34 with val_loss=0.19166694581508636
+	101			00:01:26	19/10/2021 02:12:00 with val_loss=0.19162067770957947
+	102			00:01:26	19/10/2021 02:13:27 with val_loss=0.1915869414806366
+	103			00:01:26	19/10/2021 02:14:53 with val_loss=0.1915757954120636
+	104			00:01:26	19/10/2021 02:16:19 with val_loss=0.19153162837028503
+	105			00:01:26	19/10/2021 02:17:46 with val_loss=0.19148778915405273
+	106			00:01:26	19/10/2021 02:19:12 with val_loss=0.19145478308200836
+	107			00:01:26	19/10/2021 02:20:38 with val_loss=0.19139696657657623
+	108			00:01:26	19/10/2021 02:22:05 with val_loss=0.19137604534626007
+	109			00:01:26	19/10/2021 02:23:31 with val_loss=0.19133222103118896
+	110			00:01:26	19/10/2021 02:24:58 with val_loss=0.1913004219532013
