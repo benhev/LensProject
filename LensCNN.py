@@ -82,7 +82,7 @@ class BestCheckpoint(ModelCheckpoint):
         date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
         filepath = model_dir \
                    + f'/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
-                   + 'epoch={' 'epoch:03d}--val_loss={val_loss:.4f}.h5'
+                   + 'epoch={' 'epoch:03d}--' + monitor + '={' + monitor + ':.6f}.h5'
         super().__init__(filepath=filepath, monitor=monitor, verbose=verbose, save_best_only=True,
                          save_weights_only=save_weights_only, mode=mode, options=options, **kwargs)
 
@@ -111,6 +111,26 @@ class BestCheckpoint(ModelCheckpoint):
                 '\n') + f'\t{str(datetime.now().strftime("%d/%m/%Y %H:%M:%S"))} with {self.monitor}={current}\n'
             with open(log_dir, 'wt') as file:
                 file.writelines(txt)
+
+            # Remove old saves whose monitored value is not better than the current. Ideally no more than 10 saves
+            # exist at any time, but if they are all better than the current save it will not remove any. This is an
+            # artifact of the naming scheme since each best checkpoint has an epoch and a monitor value so the save
+            # will not overwrite (due to having different file names). This is also true for the date and time part
+            # of the file name.
+            files = glob.glob(f'{dirname(self.filepath)}/*.h5')
+            if len(files) >= 10:
+                regex = rcompile(escape(dirname(
+                    self.filepath)) + r'\\[bB]est[fF]it[-_\w]*epoch=(\d{3})[-_\s]*' + escape(
+                    self.monitor) + r'=(\d+.\d{6})\.h5')
+                num_to_remove = len(files) - 9
+                rm_cands = sorted(sanitize_param([regex.match(f).groups() for f in files]), key=lambda x: x[1],
+                                  reverse=True)
+                rm_cands = rm_cands[:num_to_remove]
+                for epch, monitor in rm_cands:
+                    if self.monitor_op(current, monitor):
+                        rm_file = [f for f in files if f'epoch={epch:03d}' in f][0]
+                        os.remove(rm_file)
+
         # After saving logs to file, call the parent method to finish proper ModelCheckpoint execution.
         # the function's signature has no batch argument but in runtime it receives it as a call
         # I've left this as it is because it works
@@ -412,17 +432,26 @@ def isnat(test):
 def sanitize_param(param):
     """
     Sanitizes input parameters for dynamic function calling.
-    :param param: Some parameter, usually string from user.
+    :param param: Some parameter, string. Usually obtained from user input.
+                  If an iterable is supplied will sanitize each entry and return as list.
     :return: param as a natural type.
     """
-    try:
-        param = int(param)
-    except ValueError:
+    if isinstance(param, str):
         try:
-            param = float(param)
+            param = int(param)
         except ValueError:
-            pass
-    return param
+            try:
+                param = float(param)
+            except ValueError:
+                pass
+        return param
+    elif len(param) > 1:
+        temp = []
+        for x in param:
+            temp.append(sanitize_param(x))
+        return temp
+    else:
+        raise TypeError(f'{param} is neither a string nor iterable.')
 
 
 # Add/change callbacks IN this function
