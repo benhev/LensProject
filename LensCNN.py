@@ -261,7 +261,6 @@ def get_file(text: str = 'Input path:'):
 
 def npy_read(filename: str, start_row, num_rows):
     """
-
     Modified from function originally written by:
     __author__ = "David Warde-Farley"
     __copyright__ = "Copyright (c) 2012 by " + __author__
@@ -793,24 +792,44 @@ def sanitize_path(path: str):
     return path
 
 
+def dir_menu(pattern: str, prompt: str, sanitize=''):
+    """
+    User input menu for directories. Lists directories/files corresponding to pattern.
+    Raises FileNotFoundError if no files/folders matching pattern are found.
+
+    :param pattern: glob.glob compatible pattern, string.
+    :param prompt: Prompt to show user, string.
+    :param sanitize: (Optional) Directories to remove from the left, string.
+    :return: Directory of existing path as string.
+    """
+    sanitize = sanitize_path(sanitize) + '/' if sanitize else sanitize
+    dirs = [sanitize_path(x).removeprefix(sanitize) for x in glob.glob(pattern)]
+    options = dict(zip(range(len(dirs)), dirs))
+
+    if options:
+        return dic_menu(dic=options, prompt=prompt)
+    else:
+        raise FileNotFoundError(f'No files/folders matching {pattern} found.')
+
+
 def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(),
                kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
     """
     Creates a new convolutional neural network.
 
     :param metric: Metrics to use, list. May be a list of names according to TF docs or proper metric functions
-                   (custom or tf.keras.metrics). MSE by default.
+                   (custom or tf.keras.metrics). RMSE by default.
     :param loss_func: Loss function to use. May be a name string according to TF docs or a proper loss function
-                      (custon or tf.keras.losses). RMSE by default.
+                      (custon or tf.keras.losses). MSE by default.
     :param optimizer: Optimizer to user. May be a name string according to TF docs or a proper optimizer object
-                      (tf.keras.optimizers). Adadelta by default.
+                      (tf.keras.optimizers). AdaDelta by default.
     :param kernel_size: Convolution kernel size, double. (3,3) by default.
     :param pool_size: MaxPool and UpSampling kernel size, double. (2,2) by default.
     :param kwargs: Possible kwargs:
                         General
                             :model_name: Model name, string.
                             :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
-                            :comments: comments to add to the log file, string.
+                            :comments: Comments to add to the log file, string.
 
                         Relevant to initialize_training() (see function documentation):
                             :batch_size:
@@ -855,33 +874,12 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
                 callbacks=callbacks, model_dir=model_dir)
 
 
-def dir_menu(pattern: str, prompt: str, sanitize=''):
-    """
-
-    User input menu for directories. Lists directories/files corresponding to pattern.
-    Raises FileNotFoundError if no files/folders matching pattern are found.
-
-    :param pattern: glob.glob compatible pattern, string.
-    :param prompt: Prompt to show user, string.
-    :param sanitize: (Optional) Directories to remove from the left, string.
-    :return: Directory of existing path as string.
-    """
-    dirs = [sanitize_path(x).removeprefix(sanitize) for x in glob.glob(pattern)]
-    options = dict(zip(range(len(dirs)), dirs))
-
-    if options:
-        return dic_menu(dic=options, prompt=prompt)
-    else:
-        raise FileNotFoundError(f'No files/folders matching {pattern} found.')
-
-
 # TODO: incorporate kwargs for automated input
 def load_cnn(**kwargs):
     """
     Loads an existing convolutional neural network.
     This function currently does not accept any kwargs as it is assumed the loading user is running the program.
     """
-
     model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
         dir_menu(pattern='models/*/', prompt='Choose model to load'))
 
@@ -946,7 +944,6 @@ def fetch_log(model_dir):
 
 def train_model(model: Sequential, batch_size, epochs, training, validation, callbacks, model_dir, init_epoch=0):
     """
-
     Trains the model and pickles the history.
 
     :param model: Model to be trained, keras Sequential model.
