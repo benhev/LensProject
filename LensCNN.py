@@ -1,6 +1,7 @@
 import os
 import glob
 import numpy as np
+from tkinter import filedialog as filedlg, Tk
 from tensorflow.keras.utils import Sequence as Keras_Sequence
 from tensorflow.keras import losses, optimizers, metrics
 from tensorflow.keras.models import Sequential, load_model
@@ -12,7 +13,7 @@ import time
 from datetime import datetime
 from pickle import dump
 from re import compile as rcompile, match as rmatch, escape
-#TODO: Change models/ to some global models directory
+
 
 class MyModelCheckpoint(ModelCheckpoint):
     """
@@ -22,18 +23,18 @@ class MyModelCheckpoint(ModelCheckpoint):
     See also official TensorFlow/Keras documentation for more information on ModelCheckpoint and Callback classes.
     """
 
-    def __init__(self, model_name, verbose=1, save_weights_only=False, save_freq='epoch', options=None,
+    def __init__(self, model_dir, verbose=1, save_weights_only=False, save_freq='epoch', options=None,
                  **kwargs):
         """
         Reimplementation of the constructor in order to override some parameters and set defaults which work with the directory scheme.
-        :param model_name: Model name as string, from models/model_name.
-        :param verbose: Print feedback to terminal. 1 (on) by default.
-        :param save_weights_only: Only save weights in checkpoint save. False by default.
+        :param model_dir: Path to model folder, string.
+        :param verbose: Print feedback to terminal, int: (0,1). 1 (on) by default.
+        :param save_weights_only: Only save weights in checkpoint save, boolean. False by default.
         :param save_freq: How often to perform a save. 'epoch' by default. Integer will save every save_freq batches.
         :param options: See Tensorflow/Keras documentation
         :param kwargs: See Tensorflow/Keras documentation
         """
-        filepath = f'models/{model_name}' + '/Checkpoint/Checkpoint--epoch={epoch}--val_loss={val_loss}.h5'
+        filepath = f'{model_dir}' + '/Checkpoint/Checkpoint--epoch={epoch}--val_loss={val_loss}.h5'
         super().__init__(filepath=filepath, verbose=verbose, options=options, save_freq=save_freq,
                          save_weights_only=save_weights_only, **kwargs)
 
@@ -67,20 +68,20 @@ class BestCheckpoint(ModelCheckpoint):
     See also official TensorFlow/Keras documentation for more information on ModelCheckpoint and Callback classes.
     """
 
-    def __init__(self, model_name, monitor='val_loss', verbose=1, save_weights_only=False,
+    def __init__(self, model_dir, monitor='val_loss', verbose=1, save_weights_only=False,
                  mode='min', options=None, **kwargs):
         """
         Reimplementation of the constructor in order to override some parameters and set defaults which work with the directory scheme.
-        :param model_name: Model name as string, from models/model_name.
-        :param monitor: Value to monitor. 'val_loss' by default.
-        :param verbose: Print feedback to terminal. 1 (on) by default.
-        :param save_weights_only: Only save weights in checkpoint save. False by default.
-        :param mode: Comparison method of different saves. 'min' by default.
+        :param model_dir: Path to model folder, string.
+        :param monitor: Value to monitor, string. 'val_loss' by default.
+        :param verbose: Print feedback to terminal, int: (0,1). 1 (on) by default.
+        :param save_weights_only: Only save weights in checkpoint save, boolean. False by default.
+        :param mode: Comparison method of different saves, string. 'min' by default.
         :param options: See TensorFlow/Keras documentation
         :param kwargs: See TensorFlow/Keras documentation
         """
         date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
-        filepath = f'models/{model_name}/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
+        filepath = f'{model_dir}/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
                    + 'epoch={epoch}--' + monitor + '={' + monitor + '}.h5'
         super().__init__(filepath=filepath, monitor=monitor, verbose=verbose, save_best_only=True,
                          save_weights_only=save_weights_only, mode=mode, options=options, **kwargs)
@@ -132,7 +133,7 @@ class BestCheckpoint(ModelCheckpoint):
                 for epch, monitor in rm_cands:
                     if self.monitor_op(current, monitor):
                         rm_file = [f for f in files if f'epoch={epch}' in f][0]
-                        print('Removing', sanitize_path(rm_file).removeprefix(dirname(self.filepath + '/')))
+                        print('Removing', sanitize_path(rm_file).removeprefix(dirname(self.filepath) + '/'))
                         os.remove(rm_file)
 
         # After saving logs to file, call the parent method to finish proper ModelCheckpoint execution.
@@ -147,13 +148,14 @@ class TimeHistory(Callback):
     This callback writes epoch times to model.txt
     """
 
-    def __init__(self, name, initial_epoch):
+    def __init__(self, model_dir, initial_epoch):
         """
         Constructor
-        :param name: Model model_dir.
-        :param initial_epoch: Starting epoch.
+        :param model_dir: Path to model folder, string.
+        :param initial_epoch: Starting epoch, int.
         """
-        self.name = name
+        self.dir = model_dir
+        # self.name = name
         self.epoch = initial_epoch
         self.epoch_time_start = None
         super().__init__()
@@ -162,9 +164,9 @@ class TimeHistory(Callback):
         """
         Internally used method.
         Commands to be performed at beginning of training.
-        :param logs: Dict. Currently not in use. See TF documentation.
+        :param logs: Dict. See TF documentation.
         """
-        with open(f'models/{self.name}/model.txt', 'at') as file:
+        with open(f'{self.dir}/model.txt', 'at') as file:
             if not self.epoch:
                 file.write('\n\n\tEpoch\t\t\tTime\t\t\tBest\n')
                 file.write('=' * 100 + '\n')
@@ -175,8 +177,8 @@ class TimeHistory(Callback):
         """
         Internally used method.
         Commands to be performed at beginning of each epoch.
-        :param epoch: Integer, index of epoch.
-        :param logs: Dict. Currently not in use. See TF documentation.
+        :param epoch: Current epoch, int.
+        :param logs: Dict. See TF documentation.
         """
         # Start epoch timer
         self.epoch_time_start = time.time()
@@ -186,11 +188,11 @@ class TimeHistory(Callback):
         """
         Internally used method.
         Commands to be performed at the end of each epoch.
-        :param epoch: Integer, index of epoch.
-        :param logs: Dict. Currently not in use. See TF documentation.
+        :param epoch: Current epoch, int.
+        :param logs: Dict. See TF documentation.
         """
         # Log time elapsed to file
-        with open(f'models/{self.name}/model.txt', 'at') as file:
+        with open(f'{self.dir}/model.txt', 'at') as file:
             file.write(f'\t{self.epoch}\t\t\t{time_convert(time.time() - self.epoch_time_start)}\n')
 
 
@@ -301,21 +303,22 @@ def npy_read(filename: str, start_row, num_rows):
 
 
 # This function defines the CNN architecture, change it here.
-def create_model(loss_func, optimizer, metric, path_dir: str, input_shape: tuple, kernel_size=(3, 3), pool_size=(2, 2)):
+def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tuple, kernel_size=(3, 3),
+                 pool_size=(2, 2)):
     """
     Creates a model according to the architecture defined inside.
     :param loss_func: Loss function from tf.keras.losses (or custom or name according to TF docs).
     :param optimizer: Optimizer to use from tf.keras.optimizers (or custom or name according to TF docs).
     :param metric: Metrics to use (as a list) from tf.keras.metrics (or custom or name(s) according to TF docs).
-    :param path_dir: Model model_dir, string.
+    :param model_dir: Path to model folder, string.
     :param kernel_size: Convolution kernel size, double. (3,3) unless otherwise specified.
     :param pool_size: UpSampling and MaxPooling pool size, double. (2,2) unless otherwise specified.
-    :param input_shape: Input image shape, triple.
+    :param input_shape: Input image shape, triple: (W,H,D).
     :return: Sequetial Keras model built according to the specified architecture.
     """
     # If the model is over-fitting it may be beneficial to introduce some Dropout layer
     # Further one can play with the activation functions to get different results
-    model = Sequential(name=basename(path_dir))
+    model = Sequential(name=basename(model_dir))
 
     model.add(Conv2D(16, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
                      kernel_initializer='he_normal'))
@@ -335,13 +338,8 @@ def create_model(loss_func, optimizer, metric, path_dir: str, input_shape: tuple
     model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same', kernel_initializer='he_normal'))
     model.compile(loss=loss_func, optimizer=optimizer, metrics=metric)
 
-    try:
-        with open(f'{path_dir}/summary.txt', 'wt') as file:
-            model.summary(print_fn=lambda x: file.write(x + '\n'))
-    except FileNotFoundError:
-        print(f'Directory not found. Defaulting to current working directory at {os.getcwd()}.')
-        with open(f'{basename(path_dir)} summary.txt', 'wt') as file:
-            model.summary(print_fn=lambda x: file.write(x + '\n'))
+    with open(f'{model_dir}/summary.txt', 'wt') as file:
+        model.summary(print_fn=lambda x: file.write(x + '\n'))
 
     return model
 
@@ -375,17 +373,23 @@ def create_log(batch_size: int, epochs: int, numsample: int, numval: int, input_
     :param input_validation: Validation input path, string.
     :param label_training: Training label path, string.
     :param label_validation: Validation label path, string.
-    :param input_shape: Shape of input images, (W,H,D) tuple.
-    :param kernel_size: Shape of convolution kernels, double. (3,3) by default.
-    :param pool_size: Size of MaxPooling and UpSampling kernels, double. (2,2) by default
-    :param loss_func: Custom loss function or tf.keras.losses function or identifying string (See TF docs).
-    :param optimizer: Custom optimizer function or tf.keras.optimizers function or identifying string (See TF docs).
-    :param metric: Custom metric functions (as list) or tf.keras.metrics function or identifying string (See TF docs).
     :param first_run: Creates a new log for new models along with the log header, boolean. False by default.
-    :param name: Model name, string.
-    :param init_epoch: Initial epoch of training instance, int.
-    :param model_to_load: Directory of model in case of existing model, str. Used to log the name of the loaded checkpoint.
+
+    Required only if first_run is True:
+        :param input_shape: Shape of input images, (W,H,D) tuple.
+        :param kernel_size: Shape of convolution kernels, double. (3,3) by default.
+        :param pool_size: Size of MaxPooling and UpSampling kernels, double. (2,2) by default
+        :param loss_func: Custom loss function or tf.keras.losses function or identifying string (See TF docs).
+        :param optimizer: Custom optimizer function or tf.keras.optimizers function or identifying string (See TF docs).
+        :param metric: Custom metric functions (as list) or tf.keras.metrics function or identifying string (See TF docs).
+        :param name: Model name, string.
+
+    Required only if first_run is False:
+        :param init_epoch: Initial epoch of training instance, int.
+        :param model_to_load: Directory of model in case of existing model, str. Used to log the name of the loaded checkpoint.
+
     :return: Log string to be written to file.
+
     """
     date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
     if first_run and all([loss_func, name, optimizer, metric]):
@@ -458,11 +462,11 @@ def sanitize_param(param):
 
 
 # Add/change callbacks IN this function
-def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
+def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
     """
     Function to generate and return callbacks and a log message containing callback names.
 
-    :param model_name: Model name, string. models/model_name
+    :param model_dir: Path to model folder, string.
     :param init_epoch: Initial epoch of training instance, int.
     :param auto: Can be supplied as a list or dictionary.
                  As a list of names of callbacks by keys:
@@ -496,7 +500,6 @@ def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
                         'embeddings_freq' = 0
                         'embeddings_metadata' = None
                     Best Checkpoint:
-                        'model_name' = model_name
                         'monitor' = 'val_loss'
                         'verbose' = 1
                         'save_weights_only' = False
@@ -529,10 +532,10 @@ def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
                'bst': BestCheckpoint,
                'estop': EarlyStopping,
                'redlr': ReduceLROnPlateau}
-    kwargs_dic = {'tb': {'log_dir': f'logs/{model_name}', 'histogram_freq': 0, 'write_graph': True,
+    kwargs_dic = {'tb': {'log_dir': f'logs/{basename(model_dir)}', 'histogram_freq': 0, 'write_graph': True,
                          'write_images': False, 'write_steps_per_second': False, 'update_freq': 'epoch',
                          'profile_batch': 2, 'embeddings_freq': 0, 'embeddings_metadata': None},
-                  'bst': {'model_name': model_name, 'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
+                  'bst': {'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
                           'mode': 'min', 'options': None},
                   'estop': {'monitor': 'val_loss', 'min_delta': 1e-3, 'patience': 5, 'mode': 'auto', 'verbose': 1,
                             'baseline': None, 'restore_best_weights': False},
@@ -547,8 +550,8 @@ def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
     # (See comments in BestCheckpoint._save_model() method)
 
     # Add TimeHistory and MyModelCheckpoint to the callbacks and callback names lists
-    callbacks = [TimeHistory(name=model_name, initial_epoch=init_epoch),
-                 MyModelCheckpoint(model_name=model_name)]
+    callbacks = [TimeHistory(model_dir=model_dir, initial_epoch=init_epoch),
+                 MyModelCheckpoint(model_dir=model_dir)]
     cb_temp = ['Epoch Timing', 'Model Checkpoint']
 
     if auto is None:
@@ -571,6 +574,10 @@ def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
                 set_param(key=temp_key, dic=temp_kwargs)
                 # Get new key or approval
                 temp_key = dic_menu(temp_kwargs, prompt='Current' + key_prompt, key=True, quit_option={'': 'quit'})
+            # The model_dir shouldn't really  be changed by the user, it's built to work with the folder scheme.
+            # Add it post user input as a kwarg
+            if user_inp == 'bst':
+                temp_kwargs.update({'model_dir': model_dir})
             # Pop the relevant data from the dictionaries and append it to the tally
             # The options are popped so that they no longer show up in the user menu
             temp_callback = cb_dict.pop(user_inp)(**temp_kwargs)
@@ -600,6 +607,17 @@ def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
             cb_temp.append(temp_name)
 
     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
+
+
+def get_dir_gui(base: str = './', title='Select folder'):
+    root = Tk()
+    root.withdraw()
+    root.wm_attributes('-topmost', 1)
+    filepath = ''
+    while not filepath:
+        filepath = filedlg.askdirectory(initialdir=base, title=title)
+    root.destroy()
+    return sanitize_path(filepath).removeprefix(sanitize_path(os.getcwd()) + '/')
 
 
 def set_param(key, dic: dict):
@@ -770,7 +788,9 @@ def initiate_training(**kwargs):
     epochs = kwargs.get('epochs')
     epochs = epochs or get_nat('Number of epochs')
     training_dir = sanitize_path(kwargs.get('training_dir'))
-    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
+    # training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
+    print('Select training directory')
+    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir_gui(title='Select training directory')
 
     dirs = get_training_files(training_dir=training_dir)
 
@@ -825,7 +845,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
     :param metric: Metrics to use, list. May be a list of names according to TF docs or proper metric functions
                    (custom or tf.keras.metrics). RMSE by default.
     :param loss_func: Loss function to use. May be a name string according to TF docs or a proper loss function
-                      (custon or tf.keras.losses). MSE by default.
+                      (custom or tf.keras.losses). MSE by default.
     :param optimizer: Optimizer to user. May be a name string according to TF docs or a proper optimizer object
                       (tf.keras.optimizers). AdaDelta by default.
     :param kernel_size: Convolution kernel size, double. (3,3) by default.
@@ -833,7 +853,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
 
     Additional optional key-word arguments:
         General:
-            :model_name: Model name, string.
+            :model_dir: Path to model folder, string. Directory must not already exist.
             :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
             :comments: Comments to add to the log file, string.
 
@@ -843,18 +863,20 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
             :training_dir:
     """
     metric = metric or [metrics.RootMeanSquaredError()]
-    model_dir = kwargs.get('model_name', '')
-    model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
+    model_dir = kwargs.get('model_dir', '')
+    # model_dir = '/'.join(['models', model_dir]) if model_dir else model_dir
     if model_dir and not isdir(model_dir):
         model_dir = sanitize_path(model_dir)
         Path(model_dir).mkdir(parents=True, exist_ok=True)
     else:
         if model_dir:
             print(f'Directory {model_dir} exists!')
-        model_dir = get_dir(target='model', new=True, base='models/')
+        print('Select model base directory.')
+        model_dir = get_dir_gui(title='Select model base directory')
+        model_dir = get_dir(target='model', new=True, base=model_dir)
 
     model_name = basename(model_dir)
-    callbacks, callback_log = get_cbs(model_name=model_name, init_epoch=0, auto=kwargs.get('callback', None))
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
 
@@ -873,7 +895,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
     write_log(model_dir=model_dir, log=log)
     print(f'Building model {model_name}.')
 
-    model = create_model(loss_func=loss_func, optimizer=optimizer, metric=metric, path_dir=model_dir,
+    model = create_model(loss_func=loss_func, optimizer=optimizer, metric=metric, model_dir=model_dir,
                          input_shape=input_shape, kernel_size=kernel_size, pool_size=pool_size)
 
     train_model(model=model, batch_size=batch_size, epochs=epochs, training=training, validation=validation,
@@ -887,7 +909,7 @@ def load_cnn(**kwargs):
 
     Optional key-word arguments:
         General:
-            :model_name: Model name, string. Must be supplied along save_type.
+            :model_dir: Path to model folder, string. Directory must exist.
             :save_type: Type of save to load, string. Possible values: Checkpoint/cp or BestFit/bf/bst (case insensitive).
                         Must be supplied along model_name.
             :save_epoch: Epoch of save, int. Required for loading a best fit model (and sometimes a checkpoint if more than one exists).
@@ -900,18 +922,15 @@ def load_cnn(**kwargs):
             :epochs:
             :training_dir:
     """
-    # model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
-    #     dir_menu(pattern='models/*/', prompt='Choose model to load'))
-
     save_type = kwargs.get('save_type', '')
-    model_name = kwargs.get('model_name', '')
+    model_dir = kwargs.get('model_dir', '')
     load_epoch = kwargs.get('save_epoch', '')
     model_to_load = ''
 
-    if model_name and save_type:
-        model_dir = f'models/{model_name}'
+    if model_dir and save_type:
         if not isdir(model_dir):
             raise FileNotFoundError(f'Directory {model_dir} does not exist')
+        model_name = basename(model_dir)
         if save_type.lower() in ['checkpoint', 'cp']:
             model_to_load = glob.glob(f'{model_dir}/Checkpoint/*.h5')
             if len(model_to_load) > 1:
@@ -930,18 +949,18 @@ def load_cnn(**kwargs):
                 model_to_load = []
         else:
             raise ValueError(f'Unrecognized save_type: {save_type}')
-        model_to_load = sanitize_path(model_to_load[0]).removeprefix(
-            model_dir + '/') if model_to_load else None
+        model_to_load = sanitize_path(model_to_load[0]).removeprefix(model_dir + '/') if model_to_load else None
     if not model_to_load:
         if model_to_load is None:
             print('Model not found!')
-        model_dir = dir_menu(pattern='models/*/', prompt='Choose model to load')
+        print('Select model folder.')
+        model_dir = get_dir_gui(title='Select model folder')
         model_name = basename(model_dir)
         # Get model to load from possible saves in model_dir
         model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
 
     init_epoch = int(rmatch(r'.*epoch=(\d+).*', model_to_load).group(1))
-    callbacks, callback_log = get_cbs(model_name=model_name, init_epoch=init_epoch, auto=kwargs.get('callback', None))
+    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
     # get init_epoch from save name
@@ -956,7 +975,7 @@ def load_cnn(**kwargs):
     log.append(comments)
     write_log(model_dir=model_dir, log=log, insert=True)
 
-    print(f'Loading {model_to_load} save of model {model_name}.')
+    print(f'Loading {basename(model_to_load)} save of model {model_name}.')
     model = load_model(f'{model_dir}/{model_to_load}')
 
     train_model(model=model, batch_size=batch_size, epochs=epochs, training=training, validation=validation,
@@ -1034,16 +1053,16 @@ def train_model(model: Sequential, batch_size, epochs, training, validation, cal
     print(f'{model.name} has finished training successfully.')
 
 
-def leave(**kwargs):
-    """
-    This function is for syntax purposes only.
-    """
-    pass
+# def leave(**kwargs):
+#     """
+#     This function is for syntax purposes only.
+#     """
+#     pass
 
 
 def main():
     # Possible actions are load/create model or quit.
-    actions = {'c': create_cnn, 'l': load_cnn, '': leave}
+    actions = {'c': create_cnn, 'l': load_cnn, '': print}
     actions.get(
         dic_menu(prompt='Load/Create model?\nEnter to exit.', dic={'c': 'Create', 'l': 'Load'}, quit_option={'': ''},
                  key=True))()
