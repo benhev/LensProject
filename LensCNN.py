@@ -12,7 +12,7 @@ import time
 from datetime import datetime
 from pickle import dump
 from re import compile as rcompile, match as rmatch, escape
-
+#TODO: Change models/ to some global models directory
 
 class MyModelCheckpoint(ModelCheckpoint):
     """
@@ -22,18 +22,18 @@ class MyModelCheckpoint(ModelCheckpoint):
     See also official TensorFlow/Keras documentation for more information on ModelCheckpoint and Callback classes.
     """
 
-    def __init__(self, model_dir, verbose=1, save_weights_only=False, save_freq='epoch', options=None,
+    def __init__(self, model_name, verbose=1, save_weights_only=False, save_freq='epoch', options=None,
                  **kwargs):
         """
         Reimplementation of the constructor in order to override some parameters and set defaults which work with the directory scheme.
-        :param model_dir: Model directory as string, usually 'models/model_name'.
+        :param model_name: Model name as string, from models/model_name.
         :param verbose: Print feedback to terminal. 1 (on) by default.
         :param save_weights_only: Only save weights in checkpoint save. False by default.
         :param save_freq: How often to perform a save. 'epoch' by default. Integer will save every save_freq batches.
-        :param options: See TensorFlow/Keras documentation
-        :param kwargs: See TensorFlow/Keras documentation
+        :param options: See Tensorflow/Keras documentation
+        :param kwargs: See Tensorflow/Keras documentation
         """
-        filepath = model_dir + '/Checkpoint/Checkpoint--epoch={epoch:03d}--val_loss={val_loss:.4f}.h5'
+        filepath = f'models/{model_name}' + '/Checkpoint/Checkpoint--epoch={epoch}--val_loss={val_loss}.h5'
         super().__init__(filepath=filepath, verbose=verbose, options=options, save_freq=save_freq,
                          save_weights_only=save_weights_only, **kwargs)
 
@@ -48,9 +48,9 @@ class MyModelCheckpoint(ModelCheckpoint):
         """
         # regular expressions are used to find previous saves as the val_loss is unknown.
         regex = rcompile(
-            escape(dirname(self.filepath)) + r'\\[cC]heckpoint[-_\w]*epoch=\d{3}[-_\s]*val_loss=\d+.\d{4}\.h5')
+            escape(dirname(self.filepath)) + r'\\[cC]heckpoint[-_\w]*epoch=\d+[-_\s]*val_loss=\d+\.\d+\.h5')
         prev_epoch = [f for f in glob.glob(f'{dirname(self.filepath)}/*.h5') if
-                      regex.match(f) and f'epoch={epoch:03d}' in f]
+                      regex.match(f) and f'epoch={epoch}' in f]
         # epoch is in fact 1 less than the number of epoch running
         assert len(prev_epoch) <= 1, 'Found more than one previous epoch.'
         prev_epoch = prev_epoch[0] if len(prev_epoch) == 1 else None
@@ -67,11 +67,11 @@ class BestCheckpoint(ModelCheckpoint):
     See also official TensorFlow/Keras documentation for more information on ModelCheckpoint and Callback classes.
     """
 
-    def __init__(self, model_dir, monitor='val_loss', verbose=1, save_weights_only=False,
+    def __init__(self, model_name, monitor='val_loss', verbose=1, save_weights_only=False,
                  mode='min', options=None, **kwargs):
         """
         Reimplementation of the constructor in order to override some parameters and set defaults which work with the directory scheme.
-        :param model_dir: Model directory as string, usually 'models/model_name'.
+        :param model_name: Model name as string, from models/model_name.
         :param monitor: Value to monitor. 'val_loss' by default.
         :param verbose: Print feedback to terminal. 1 (on) by default.
         :param save_weights_only: Only save weights in checkpoint save. False by default.
@@ -80,9 +80,8 @@ class BestCheckpoint(ModelCheckpoint):
         :param kwargs: See TensorFlow/Keras documentation
         """
         date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
-        filepath = model_dir \
-                   + f'/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
-                   + 'epoch={' 'epoch:03d}--' + monitor + '={' + monitor + ':.6f}.h5'
+        filepath = f'models/{model_name}/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
+                   + 'epoch={epoch}--' + monitor + '={' + monitor + '}.h5'
         super().__init__(filepath=filepath, monitor=monitor, verbose=verbose, save_best_only=True,
                          save_weights_only=save_weights_only, mode=mode, options=options, **kwargs)
 
@@ -116,19 +115,24 @@ class BestCheckpoint(ModelCheckpoint):
             # exist at any time, but if they are all better than the current save it will not remove any. This is an
             # artifact of the naming scheme since each best checkpoint has an epoch and a monitor value so the save
             # will not overwrite (due to having different file names). This is also true for the date and time part
-            # of the file name.
-            files = glob.glob(f'{dirname(self.filepath)}/*.h5')
+            # of the file name. A consequence of this is that a BestCheckpoint class will not delete unmonitored
+            # saves nor count them as part of the 10 maximum to keep.
+            files = glob.glob(f'{dirname(self.filepath)}/*{self.monitor}*.h5')
             if len(files) >= 10:
                 regex = rcompile(escape(dirname(
-                    self.filepath)) + r'\\[bB]est[fF]it[-_\w]*epoch=(\d{3})[-_\s]*' + escape(
-                    self.monitor) + r'=(\d+.\d{6})\.h5')
+                    self.filepath)) + r'\\[bB]est[fF]it[-_\w]*epoch=(\d+)[-_\s]*' + escape(
+                    self.monitor) + r'=(\d+\.\d+)\.h5')
                 num_to_remove = len(files) - 9
-                rm_cands = sorted(sanitize_param([regex.match(f).groups() for f in files]), key=lambda x: x[1],
-                                  reverse=True)
+                rm_cands = []
+                for f in files:
+                    if regex.match(f):
+                        rm_cands.append(sanitize_param(regex.match(f).groups()))
+                rm_cands.sort(key=lambda x: x[1], reverse=True)
                 rm_cands = rm_cands[:num_to_remove]
                 for epch, monitor in rm_cands:
                     if self.monitor_op(current, monitor):
-                        rm_file = [f for f in files if f'epoch={epch:03d}' in f][0]
+                        rm_file = [f for f in files if f'epoch={epch}' in f][0]
+                        print('Removing', sanitize_path(rm_file).removeprefix(dirname(self.filepath + '/')))
                         os.remove(rm_file)
 
         # After saving logs to file, call the parent method to finish proper ModelCheckpoint execution.
@@ -454,11 +458,11 @@ def sanitize_param(param):
 
 
 # Add/change callbacks IN this function
-def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
+def get_cbs(model_name: str, init_epoch: int = 0, auto=None):
     """
     Function to generate and return callbacks and a log message containing callback names.
 
-    :param model_dir: Model directory, string.
+    :param model_name: Model name, string. models/model_name
     :param init_epoch: Initial epoch of training instance, int.
     :param auto: Can be supplied as a list or dictionary.
                  As a list of names of callbacks by keys:
@@ -492,7 +496,7 @@ def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
                         'embeddings_freq' = 0
                         'embeddings_metadata' = None
                     Best Checkpoint:
-                        'model_dir' = model_dir
+                        'model_name' = model_name
                         'monitor' = 'val_loss'
                         'verbose' = 1
                         'save_weights_only' = False
@@ -525,10 +529,10 @@ def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
                'bst': BestCheckpoint,
                'estop': EarlyStopping,
                'redlr': ReduceLROnPlateau}
-    kwargs_dic = {'tb': {'log_dir': f'logs/{basename(model_dir)}', 'histogram_freq': 0, 'write_graph': True,
+    kwargs_dic = {'tb': {'log_dir': f'logs/{model_name}', 'histogram_freq': 0, 'write_graph': True,
                          'write_images': False, 'write_steps_per_second': False, 'update_freq': 'epoch',
                          'profile_batch': 2, 'embeddings_freq': 0, 'embeddings_metadata': None},
-                  'bst': {'model_dir': model_dir, 'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
+                  'bst': {'model_name': model_name, 'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
                           'mode': 'min', 'options': None},
                   'estop': {'monitor': 'val_loss', 'min_delta': 1e-3, 'patience': 5, 'mode': 'auto', 'verbose': 1,
                             'baseline': None, 'restore_best_weights': False},
@@ -543,8 +547,8 @@ def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
     # (See comments in BestCheckpoint._save_model() method)
 
     # Add TimeHistory and MyModelCheckpoint to the callbacks and callback names lists
-    callbacks = [TimeHistory(name=basename(model_dir), initial_epoch=init_epoch),
-                 MyModelCheckpoint(model_dir=model_dir)]
+    callbacks = [TimeHistory(name=model_name, initial_epoch=init_epoch),
+                 MyModelCheckpoint(model_name=model_name)]
     cb_temp = ['Epoch Timing', 'Model Checkpoint']
 
     if auto is None:
@@ -816,6 +820,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
                kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
     """
     Creates a new convolutional neural network.
+    If insufficient kwargs supplied will default to user input.
 
     :param metric: Metrics to use, list. May be a list of names according to TF docs or proper metric functions
                    (custom or tf.keras.metrics). RMSE by default.
@@ -825,16 +830,17 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
                       (tf.keras.optimizers). AdaDelta by default.
     :param kernel_size: Convolution kernel size, double. (3,3) by default.
     :param pool_size: MaxPool and UpSampling kernel size, double. (2,2) by default.
-    :param kwargs: Possible kwargs:
-                        General
-                            :model_name: Model name, string.
-                            :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
-                            :comments: Comments to add to the log file, string.
 
-                        Relevant to initialize_training() (see function documentation):
-                            :batch_size:
-                            :epochs:
-                            :training_dir:
+    Additional optional key-word arguments:
+        General:
+            :model_name: Model name, string.
+            :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
+            :comments: Comments to add to the log file, string.
+
+        Relevant to initialize_training() (see function documentation):
+            :batch_size:
+            :epochs:
+            :training_dir:
     """
     metric = metric or [metrics.RootMeanSquaredError()]
     model_dir = kwargs.get('model_name', '')
@@ -848,7 +854,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
         model_dir = get_dir(target='model', new=True, base='models/')
 
     model_name = basename(model_dir)
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', None))
+    callbacks, callback_log = get_cbs(model_name=model_name, init_epoch=0, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
 
@@ -861,8 +867,8 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
                      pool_size=pool_size, loss_func=loss_func, optimizer=optimizer, metric=metric, first_run=True,
                      name=model_name)
     log.append(callback_log)
-    comments = kwargs.get('comments')
-    comments = comments or input('Additional Comments:')
+    comments = kwargs.get('comments', None)
+    comments = comments if comments is not None else input('Additional Comments:')
     log.append(comments + '\n')
     write_log(model_dir=model_dir, log=log)
     print(f'Building model {model_name}.')
@@ -874,33 +880,83 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
                 callbacks=callbacks, model_dir=model_dir)
 
 
-# TODO: incorporate kwargs for automated input
 def load_cnn(**kwargs):
     """
-    Loads an existing convolutional neural network.
-    This function currently does not accept any kwargs as it is assumed the loading user is running the program.
+    Loads an existing convolutional neural network save.
+    If insufficient kwargs supplied will default to user input.
+
+    Optional key-word arguments:
+        General:
+            :model_name: Model name, string. Must be supplied along save_type.
+            :save_type: Type of save to load, string. Possible values: Checkpoint/cp or BestFit/bf/bst (case insensitive).
+                        Must be supplied along model_name.
+            :save_epoch: Epoch of save, int. Required for loading a best fit model (and sometimes a checkpoint if more than one exists).
+                         save_epoch identifies the save and must be supplied.
+            :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
+            :comments: Comments to add to the log file, string.
+
+        Relevant to initialize_training() (see function documentation):
+            :batch_size:
+            :epochs:
+            :training_dir:
     """
-    model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
-        dir_menu(pattern='models/*/', prompt='Choose model to load'))
+    # model_dir, model_name = (lambda x: (x.removesuffix('\\'), basename(x.removesuffix('\\'))))(
+    #     dir_menu(pattern='models/*/', prompt='Choose model to load'))
 
-    # Get model to load from possible saves in model_dir
-    model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
+    save_type = kwargs.get('save_type', '')
+    model_name = kwargs.get('model_name', '')
+    load_epoch = kwargs.get('save_epoch', '')
+    model_to_load = ''
 
-    batch_size, epochs, training, validation = initiate_training()
+    if model_name and save_type:
+        model_dir = f'models/{model_name}'
+        if not isdir(model_dir):
+            raise FileNotFoundError(f'Directory {model_dir} does not exist')
+        if save_type.lower() in ['checkpoint', 'cp']:
+            model_to_load = glob.glob(f'{model_dir}/Checkpoint/*.h5')
+            if len(model_to_load) > 1:
+                assert load_epoch, f'More than one checkpoint found in {model_dir}. Specify save_epoch to specify model to load.'
+                model_to_load = [x for x in model_to_load if f'epoch={load_epoch:03d}' in x]
+                if len(model_to_load) != 1:
+                    print(
+                        f'There should be no more than one checkpoint with a specific epoch in {model_dir}, found {len(model_to_load)}.')
+                    model_to_load = []
+        elif save_type.lower() in ['bestfit', 'bf', 'bst']:
+            assert load_epoch, 'Cannot auto-load best fit without specified epoch.'
+            model_to_load = glob.glob(f'{model_dir}/BestFit/*epoch={load_epoch:03d}*.h5')
+            if len(model_to_load) != 1:
+                print(
+                    f'Cannot find specific best fit model for {model_name} with epoch={load_epoch:03d} in {model_dir}.')
+                model_to_load = []
+        else:
+            raise ValueError(f'Unrecognized save_type: {save_type}')
+        model_to_load = sanitize_path(model_to_load[0]).removeprefix(
+            model_dir + '/') if model_to_load else None
+    if not model_to_load:
+        if model_to_load is None:
+            print('Model not found!')
+        model_dir = dir_menu(pattern='models/*/', prompt='Choose model to load')
+        model_name = basename(model_dir)
+        # Get model to load from possible saves in model_dir
+        model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
+
+    init_epoch = int(rmatch(r'.*epoch=(\d+).*', model_to_load).group(1))
+    callbacks, callback_log = get_cbs(model_name=model_name, init_epoch=init_epoch, auto=kwargs.get('callback', None))
+    batch_size, epochs, training, validation = initiate_training(**kwargs)
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
     # get init_epoch from save name
-    init_epoch = int(rmatch(r'.*epoch=(\d{3}).*', model_to_load).group(1))
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch)
     print('Preparing log file.')
     log = create_log(batch_size=batch_size, epochs=epochs, numsample=num_sample, numval=num_val,
                      input_training=training[0], input_validation=validation[0], label_training=training[1],
                      label_validation=validation[1], input_shape=input_shape, init_epoch=init_epoch,
                      model_to_load=model_to_load)
     log.append(callback_log)
-    log.append(input('Additional Comments:') + '\n')
+    comments = kwargs.get('comments', None)
+    comments = comments if comments is not None else input('Additional Comments:')
+    log.append(comments)
     write_log(model_dir=model_dir, log=log, insert=True)
 
-    print(f'Loading {model_to_load} checkpoint of model {model_name}.')
+    print(f'Loading {model_to_load} save of model {model_name}.')
     model = load_model(f'{model_dir}/{model_to_load}')
 
     train_model(model=model, batch_size=batch_size, epochs=epochs, training=training, validation=validation,
