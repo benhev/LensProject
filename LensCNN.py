@@ -1,12 +1,15 @@
 import os
 import glob
+import inspect
+import sys
+
 import numpy as np
 from tkinter import filedialog as filedlg, Tk
 from tensorflow.keras.utils import Sequence as Keras_Sequence
 from tensorflow.keras import losses, optimizers, metrics
 from tensorflow.keras.models import Sequential, load_model
 from tensorflow.keras.layers import Conv2D, MaxPool2D, UpSampling2D  # , Dropout
-from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint, EarlyStopping, ReduceLROnPlateau, Callback
+from tensorflow.keras import callbacks
 from pathlib import Path
 from os.path import isdir, isfile, basename, dirname
 import time
@@ -15,24 +18,25 @@ from pickle import dump
 from re import compile as rcompile, match as rmatch, escape
 
 
-class MyModelCheckpoint(ModelCheckpoint):
+class AutoCheckpoint(callbacks.ModelCheckpoint):
     """
     A ModelCheckpoint class which is pre-made using the directory scheme of this script.
     Saves checkpoint every epoch by default to model_dir/Checkpoint.
     This class also implements erasure of previous epoch checkpoint if one exists (see _save_model method).
     See also official TensorFlow/Keras documentation for more information on ModelCheckpoint and Callback classes.
+
+    :param model_dir: Path to model folder, string.
+    :param verbose: Print feedback to terminal, int: (0,1). 1 (on) by default.
+    :param save_weights_only: Only save weights in checkpoint save, boolean. False by default.
+    :param save_freq: How often to perform a save. 'epoch' by default. Integer will save every save_freq batches.
+    :param options: See Tensorflow/Keras documentation
+    :param kwargs: See Tensorflow/Keras documentation
     """
 
     def __init__(self, model_dir, verbose=1, save_weights_only=False, save_freq='epoch', options=None,
                  **kwargs):
         """
         Reimplementation of the constructor in order to override some parameters and set defaults which work with the directory scheme.
-        :param model_dir: Path to model folder, string.
-        :param verbose: Print feedback to terminal, int: (0,1). 1 (on) by default.
-        :param save_weights_only: Only save weights in checkpoint save, boolean. False by default.
-        :param save_freq: How often to perform a save. 'epoch' by default. Integer will save every save_freq batches.
-        :param options: See Tensorflow/Keras documentation
-        :param kwargs: See Tensorflow/Keras documentation
         """
         filepath = f'{model_dir}' + '/Checkpoint/Checkpoint--epoch={epoch}--val_loss={val_loss}.h5'
         super().__init__(filepath=filepath, verbose=verbose, options=options, save_freq=save_freq,
@@ -43,6 +47,7 @@ class MyModelCheckpoint(ModelCheckpoint):
         """
         Reimplementation of _save_model of ModelCheckpoint in order to delete previous epoch save.
         Otherwise identical.
+
         :param epoch: Current epoch.
         :param logs: See TF/Keras documentation.
         :param batch: Current batch.
@@ -61,24 +66,25 @@ class MyModelCheckpoint(ModelCheckpoint):
         super()._save_model(epoch=epoch, logs=logs, batch=batch)
 
 
-class BestCheckpoint(ModelCheckpoint):
+class BestCheckpoint(callbacks.ModelCheckpoint):
     """
     A ModelCheckpoint class which is pre-made using the directory scheme of this script.
     Saves only best seen checkpoint to model_dir/BestFit and logs the parameters to the model.txt file.
     See also official TensorFlow/Keras documentation for more information on ModelCheckpoint and Callback classes.
+
+    :param model_dir: Path to model folder, string.
+    :param monitor: Value to monitor, string. 'val_loss' by default.
+    :param verbose: Print feedback to terminal, int: (0,1). 1 (on) by default.
+    :param save_weights_only: Only save weights in checkpoint save, boolean. False by default.
+    :param mode: Comparison method of different saves, string. 'min' by default.
+    :param options: See TensorFlow/Keras documentation
+    :param kwargs: See TensorFlow/Keras documentation
     """
 
     def __init__(self, model_dir, monitor='val_loss', verbose=1, save_weights_only=False,
                  mode='min', options=None, **kwargs):
         """
         Reimplementation of the constructor in order to override some parameters and set defaults which work with the directory scheme.
-        :param model_dir: Path to model folder, string.
-        :param monitor: Value to monitor, string. 'val_loss' by default.
-        :param verbose: Print feedback to terminal, int: (0,1). 1 (on) by default.
-        :param save_weights_only: Only save weights in checkpoint save, boolean. False by default.
-        :param mode: Comparison method of different saves, string. 'min' by default.
-        :param options: See TensorFlow/Keras documentation
-        :param kwargs: See TensorFlow/Keras documentation
         """
         date, tm = str(datetime.now().strftime('%d/%m/%Y %H:%M:%S')).split()
         filepath = f'{model_dir}/BestFit/BestFit--{date.replace("/", "-")}_{tm.replace(":", "")}--' \
@@ -96,6 +102,9 @@ class BestCheckpoint(ModelCheckpoint):
         An extension of existing method in ModelCheckpoint.
         Logs the save if such is performed to model.txt and call parent method.
         See TensorFlow/Keras documentation for additional information.
+
+        :param epoch: Current epoch, int.
+        :param logs: log, dict. See TF docs.
         """
         current = logs.get(self.monitor)
         log_dir = dirname(self.filepath).removesuffix('/BestFit') + '/model.txt'
@@ -142,18 +151,16 @@ class BestCheckpoint(ModelCheckpoint):
         super()._save_model(epoch=epoch, logs=logs, batch=batch)
 
 
-class TimeHistory(Callback):
+class TimeHistory(callbacks.Callback):
     """
     Epoch timing logger callback.
     This callback writes epoch times to model.txt
+
+    :param model_dir: Path to model folder, string.
+    :param initial_epoch: Starting epoch, int.
     """
 
     def __init__(self, model_dir, initial_epoch):
-        """
-        Constructor
-        :param model_dir: Path to model folder, string.
-        :param initial_epoch: Starting epoch, int.
-        """
         self.dir = model_dir
         # self.name = name
         self.epoch = initial_epoch
@@ -164,7 +171,8 @@ class TimeHistory(Callback):
         """
         Internally used method.
         Commands to be performed at beginning of training.
-        :param logs: Dict. See TF documentation.
+
+        :param logs: logs, dict. See TF documentation.
         """
         with open(f'{self.dir}/model.txt', 'at') as file:
             if not self.epoch:
@@ -177,8 +185,9 @@ class TimeHistory(Callback):
         """
         Internally used method.
         Commands to be performed at beginning of each epoch.
+
         :param epoch: Current epoch, int.
-        :param logs: Dict. See TF documentation.
+        :param logs: logs, dict. See TF documentation.
         """
         # Start epoch timer
         self.epoch_time_start = time.time()
@@ -188,8 +197,9 @@ class TimeHistory(Callback):
         """
         Internally used method.
         Commands to be performed at the end of each epoch.
+
         :param epoch: Current epoch, int.
-        :param logs: Dict. See TF documentation.
+        :param logs: logs, dict. See TF documentation.
         """
         # Log time elapsed to file
         with open(f'{self.dir}/model.txt', 'at') as file:
@@ -200,21 +210,20 @@ class TimeHistory(Callback):
 class LensSequence(Keras_Sequence):
     """
     Keras data sequence which reads numpy files in chunks.
+
+    :param x_set: Directory to input as *.npy file.
+    :param y_set: Directory to labels as *.npy file.
+    :param batch_size: Size of batches to be supplied to model.
     """
 
     def __init__(self, x_set, y_set, batch_size):
-        """
-        Constructor
-        :param x_set: Directory to input as *.npy file.
-        :param y_set: Directory to labels as *.npy file.
-        :param batch_size: Size of batches to be supplied to model.
-        """
         self.x, self.y = x_set, y_set
         self.batch_size = batch_size
 
     def __len__(self):
         """
         Return number of batches in sequence.
+
         :return: Total number of batches in LensSequence.
         """
         with open(self.x, 'rb') as fhandle:
@@ -230,6 +239,7 @@ class LensSequence(Keras_Sequence):
     def __getitem__(self, idx):
         """
         Get a shuffled batch.
+
         :param idx: Starting index.
         :return: Numpy array.
         """
@@ -244,6 +254,7 @@ class LensSequence(Keras_Sequence):
 def npy_get_shape(file: str):
     """
     Return the shape of a numpy array stored in *.npy file as iterable.
+
     :param file: File directory.
     :return: Shape of stored numpy array as numpy array.
     """
@@ -256,6 +267,7 @@ def npy_get_shape(file: str):
 def get_file(text: str = 'Input path:'):
     """
     Function to ensure input exists as a file.
+
     :param text: Prompt text.
     :return: Path to existing file.
     """
@@ -274,6 +286,7 @@ def npy_read(filename: str, start_row, num_rows):
     __email__ = "dwf@dwf.model_dir"
 
     Reads chunks of data from a given numpy file.
+
     :param filename: npy file to read.
     :param start_row: Starting index.
     :param num_rows: Number of rows to read.
@@ -307,6 +320,7 @@ def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tupl
                  pool_size=(2, 2)):
     """
     Creates a model according to the architecture defined inside.
+
     :param loss_func: Loss function from tf.keras.losses (or custom or name according to TF docs).
     :param optimizer: Optimizer to use from tf.keras.optimizers (or custom or name according to TF docs).
     :param metric: Metrics to use (as a list) from tf.keras.metrics (or custom or name(s) according to TF docs).
@@ -347,6 +361,8 @@ def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tupl
 def time_convert(seconds):
     """
     Convert time from seconds to regular hh:mm:ss format.
+
+    :param seconds: Time in seconds, float.
     """
     # This function is necessary for time logging to function
     hrs = np.floor(seconds / 3600).astype('int')
@@ -439,6 +455,7 @@ def isnat(test):
 def sanitize_param(param):
     """
     Sanitizes input parameters for dynamic function calling.
+
     :param param: Some parameter, string. Usually obtained from user input.
                   If an iterable is supplied will sanitize each entry and return as list.
     :return: param as a natural type.
@@ -461,155 +478,325 @@ def sanitize_param(param):
         raise TypeError(f'{param} is neither a string nor iterable.')
 
 
-# Add/change callbacks IN this function
-def get_cbs(model_dir: str, init_epoch: int = 0, auto=None):
+# TODO docs
+def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
     """
     Function to generate and return callbacks and a log message containing callback names.
 
     :param model_dir: Path to model folder, string.
+    :param epochs: Number of epochs, int.
+    :param batch_size: Batch size, int.
     :param init_epoch: Initial epoch of training instance, int.
     :param auto: Can be supplied as a list or dictionary.
-                 As a list of names of callbacks by keys:
-                    'tb'    - TensorBoard
-                    'bst'   - Best Checkpoint
-                    'estop' - Early Stopping
-                    'redlr' - Reduce LR on Plateau
-
-                 e.g: ['tb','bst','redlr']
-                 Such a call will result in default values taken for callback parameters as defined in THIS function.
-                 To alter default values of arguments a dictionary is used employing the same key naming scheme above.
-                 Each value is an appropriate kwargs dictionary for the specific callback. 
-                 Not all arguments must be specified, only valid supplied kwargs will be altered.
-
-                 e.g: {'tb' : {'log_dir':'foo/bar'},'bst':{'verbose':0,'save_weights_only':True}}
-
-                 Should one wish to include a callback with its default parameter settings it may be included
-                 in the dictionary along with any value as only matching kwargs are used.
-
-                 e.g: {{'tb' : {'log_dir' : 'foo/bar'}, 'bst' : {'verbose' : 0, 'save_weights_only' : True}}, 'redlr' : 0}
-
-                 Default parameter values (see TensorFlow documentation for more information on specific parameters) :
-                    TensorBoard:
-                        'log_dir' = f'logs/{basename(model_dir)}'
-                        'histogram_freq' = 0
-                        'write_graph' = True,
-                        'write_images' = False
-                        'write_steps_per_second' = False
-                        'update_freq' = 'epoch'
-                        'profile_batch' = 2
-                        'embeddings_freq' = 0
-                        'embeddings_metadata' = None
-                    Best Checkpoint:
-                        'monitor' = 'val_loss'
-                        'verbose' = 1
-                        'save_weights_only' = False
-                        'mode' = 'min'
-                        'options' = None
-                    Early Stopping:
-                        'monitor' = 'val_loss'
-                        'min_delta' = 1e-3
-                        'patience' = 5
-                        'mode' = 'auto'
-                        'verbose' = 1
-                        'baseline' = None
-                        'restore_best_weights' = False
-                    Reduce LR on Plateau:
-                        'monitor' = 'val_loss'
-                        'factor' = 0.2
-                        'patience' = 5
-                        'verbose' = 1
-                        'mode' = 'auto'
-                        'min_delta' = 1e-4
-                        'cooldown' = 0
-                        'min_lr' = 0
-    :return: List of callbacks and log line (string) as a list of two objects. [callbacks,callback_log]
+    :return:
     """
-    cb_names = {'tb': 'TensorBoard',
-                'bst': 'Best Checkpoint',
-                'estop': 'Early Stopping',
-                'redlr': 'Reduce LR on Plateau'}
-    cb_dict = {'tb': TensorBoard,
-               'bst': BestCheckpoint,
-               'estop': EarlyStopping,
-               'redlr': ReduceLROnPlateau}
-    kwargs_dic = {'tb': {'log_dir': f'logs/{basename(model_dir)}', 'histogram_freq': 0, 'write_graph': True,
-                         'write_images': False, 'write_steps_per_second': False, 'update_freq': 'epoch',
-                         'profile_batch': 2, 'embeddings_freq': 0, 'embeddings_metadata': None},
-                  'bst': {'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
-                          'mode': 'min', 'options': None},
-                  'estop': {'monitor': 'val_loss', 'min_delta': 1e-3, 'patience': 5, 'mode': 'auto', 'verbose': 1,
-                            'baseline': None, 'restore_best_weights': False},
-                  'redlr': {'monitor': 'val_loss', 'factor': 0.2, 'patience': 5, 'verbose': 1, 'mode': 'auto',
-                            'min_delta': 1e-4, 'cooldown': 0, 'min_lr': 0}}
-    num_cbs = len(cb_dict)
-    # IMPORTANT NOTE:
-    # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly.
-    # It MUST precede BestCheckpoint in the list of callbacks.
-    # As it is currently, BestCheckpoint is always added after TimeHistory.
-    # No error will be thrown over this but it will seamlessly affect the log files, beware!
-    # (See comments in BestCheckpoint._save_model() method)
 
-    # Add TimeHistory and MyModelCheckpoint to the callbacks and callback names lists
-    callbacks = [TimeHistory(model_dir=model_dir, initial_epoch=init_epoch),
-                 MyModelCheckpoint(model_dir=model_dir)]
-    cb_temp = ['Epoch Timing', 'Model Checkpoint']
+    def get_args(func):
+        sig = inspect.signature(func)
+        args = {}
+        for param in sig.parameters.values():
+            args.update({param.name: '' if param.default is param.empty else param.default})
+        args.pop('args', None)
+        args.pop('kwargs', None)
+        return args
 
-    if auto is None:
-        # User should be interacting with the menu, this is always the case when this function is used internally
-        cb_prompt = f'Select callbacks to utilize.\nNote: time logging and model checkpoint are on by default and ' \
-                    f'cannot be turned off\nas they are necessary for epoch timing and model saving (' \
-                    f'respectively).\nInput \'q\' to quit this menu.'
-        # get callback to append
-        user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'quit'})
-        while not (user_inp == 'q' or len(callbacks) - 2 == num_cbs):
-            key_prompt = f' parameter values for {cb_names.get(user_inp)} are listed.\nChoose parameter to ' \
-                         f'modify or press Enter to approve and continue. '
-            # prepare the relevant kwargs dictionary
-            temp_kwargs = kwargs_dic.get(user_inp)
-            # get key to change or approval from user
-            temp_key = dic_menu(temp_kwargs, prompt='Default' + key_prompt, key=True, quit_option={'': 'quit'})
-            # So long as the user hasn't already approved the list of parameters, ask for another
-            while temp_key:
-                # Get new parameter value from user
-                set_param(key=temp_key, dic=temp_kwargs)
-                # Get new key or approval
-                temp_key = dic_menu(temp_kwargs, prompt='Current' + key_prompt, key=True, quit_option={'': 'quit'})
-            # The model_dir shouldn't really  be changed by the user, it's built to work with the folder scheme.
-            # Add it post user input as a kwarg
-            if user_inp == 'bst':
-                temp_kwargs.update({'model_dir': model_dir})
-            # Pop the relevant data from the dictionaries and append it to the tally
-            # The options are popped so that they no longer show up in the user menu
-            temp_callback = cb_dict.pop(user_inp)(**temp_kwargs)
-            temp_name = cb_names.pop(user_inp)
-            callbacks.append(temp_callback)
-            cb_temp.append(temp_name)
-            print(f'Added callback {temp_name}.\n{len(callbacks)}/{num_cbs + 2} callbacks enabled.')
-            # Have we exhausted the list of available callbacks?
-            if len(callbacks) - 2 != num_cbs:
-                user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'Quit'})
+    def check_parents(test_class, test_parents):
+        if not isinstance(test_parents, list):
+            test_parents = [test_parents]
+        for parent in test_class.__bases__:
+            if parent in test_parents or check_parents(parent, test_parents):
+                return True
+        return False
+
+    def set_param(dic: dict, k=None, required=False, new=False):
+        nonlocal model_dir, model_name, epochs, batch_size, init_epoch
+        if not new and k not in dic.keys():
+            raise KeyError(f'Key {k} not found.')
+        if new:
+            required = False
+            k = input('Input keyword to set:')
+            if k == '':
+                return
+            gss = [gkey for gkey in sorted(guess_dic.keys()) if gkey in k]
+            if gss:
+                gss = k if k in gss else gss[0]
+                print(f'Auto suggesting value for parameter {k}:')
+                dic.update({k: guess_dic.get(gss)})
+        prompt = f'Changing value of {k}. Input as PYTHON EXPRESSION. \n' \
+                 + ('This is a mandatory field.\n' if required else 'Leave blank to leave field unchanged.\n') \
+                 + f'{k}={dic.get(k, "")}\n'
+
+        success = False
+        while not success:
+            print(prompt)
+            print('Useful parameters in the scope:')
+            print(', '.join(get_args(get_cbs).keys()) + ', model_name\n\n')
+
+            user_inp = input(f'{k}=')
+            try:
+                user_inp = eval(user_inp)
+            except:
+                if user_inp != '':
+                    print(f'Could not interpret expression: {user_inp}.')
+                elif user_inp == '' and not required:
+                    success = True
             else:
-                print('All callbacks enabled. Proceeding.')
+                dic.update({k: user_inp})
+                success = True
+            finally:
+                pass
+
+    def get_verify_cb():
+        add = False
+        temp_cb = dic_menu(dict(zip(range(1, 1 + len(options)), options.keys())), prompt=cb_prompt,
+                           quit_option={'q': ''})
+        while temp_cb and not add:
+            # temp_cb = options.get(temp_cb)
+            print(
+                '=' * 100 + f'\nShowing documentation for {options.get(temp_cb).__name__} callback.\nEnsure all required arguments are met.\n' + '=' * 100)
+            # time.sleep(2)
+            print(options.get(temp_cb).__doc__)
+            print('=' * 100)
+            add = (input('Add callback? (Y/N)\n').lower() == 'y')
+            if not add:
+                temp_cb = dic_menu(dict(zip(range(1, 1 + len(options)), options.keys())), prompt=cb_prompt,
+                                   quit_option={'q': ''})
+
+        return temp_cb if temp_cb == '' else options.pop(temp_cb, None)
+
+    model_name = basename(model_dir)
+    keras_options = {k: v for k, v in inspect.getmembers(callbacks, inspect.isclass) if
+                     callbacks.Callback in v.__bases__}
+    options = {k: v for k, v in inspect.getmembers(sys.modules[__name__], inspect.isclass) if
+               check_parents(v, [callbacks.Callback]) and 'keras.callbacks' not in v.__module__}
+    options.update(keras_options)
+    for key in ['AutoCheckpoint', 'ModelCheckpoint', 'TimeHistory']:
+        options.pop(key, None)
+
+    callback_list = [TimeHistory(model_dir=model_dir, initial_epoch=init_epoch), AutoCheckpoint(model_dir=model_dir)]
+    callback_names = ['TimeHistory', 'AutoCheckpoint']
+    if auto is None:
+        guess_dic = {
+            'log_dir': f'logs/{model_name}',
+            'path': model_dir,
+            'dir': model_dir,
+            'name': model_name,
+            'epochs': epochs,
+            'batch_size': batch_size,
+            'init': init_epoch,
+            'initial_epoch': init_epoch,
+        }
+        cb_prompt = f'\n\nSelect callbacks to utilize.\nNote: time logging and model checkpoint are on by default and ' \
+                    f'cannot be turned off\nas they are necessary for epoch timing and model saving (' \
+                    f'respectively).\nEnter q to quit this menu.'
+        cb = get_verify_cb()
+        while cb:
+            # options_menu.pop(cb)
+            # cb = options.get(cb)
+            args = get_args(cb)
+            req_keys = [k for k, v in args.items() if v == '']
+            for key in req_keys:
+                guess = [gkey for gkey in sorted(guess_dic.keys()) if gkey in key]
+                if guess:
+                    guess = key if key in guess else guess[0]
+                    print(f'Auto suggesting value for required parameter {key}:')
+                    args.update({key: guess_dic.get(guess)})
+                    set_param(args, key)
+                else:
+                    set_param(args, k=key, required=True)
+
+            key_prompt = f'Current parameter values for {cb.__name__} are listed.\nChoose parameter to ' \
+                         + 'modify or press Enter to approve and continue.\n' \
+                         + 'Type kwargs to input new keyword argument or DELETE to delete.'
+            quit_options = {'': 'approve', 'kwargs': 'kwargs', 'DELETE': 'delete'}
+            temp_key = dic_menu(args, prompt=key_prompt, key=True, quit_option=quit_options)
+            while temp_key:
+                if temp_key == 'kwargs':
+                    set_param(args, new=True)
+                elif temp_key == 'DELETE':
+                    del_key = input('Input parameter to delete:')
+                    if del_key in req_keys:
+                        print('Required parameters cannot be deleted.')
+                    else:
+                        args.pop(del_key, None)
+                else:
+                    set_param(args, k=temp_key)
+
+                temp_key = dic_menu(args, prompt=key_prompt, key=True, quit_option=quit_options)
+
+            callback_list.append(cb(**args))
+            callback_names.append(cb.__name__)
+            print(f'Added callback {cb.__name__}.\n{len(callback_list)} callbacks enabled.')
+            cb = get_verify_cb()
+
     else:
         # The function may have been called externally to this script and can be supplied with arguments
         # in order to circumvent the need for user input
         for name in auto:
-            # prepare the kwargs dictionary
-            temp_kwargs = kwargs_dic.get(name)
-            # if the value is itself a dictionary check if it has any valid parameters
-            # otherwise use default
-            if isinstance(auto, dict) and isinstance(auto.get(name), dict):
-                [temp_kwargs.update({key: auto.get(name).get(key, temp_kwargs.get(key))}) for key in temp_kwargs]
-            # Get the relevant data from the dictionaries and append it to the tally
-            temp_callback = cb_dict.get(name)(**temp_kwargs)
-            temp_name = cb_names.get(name)
-            callbacks.append(temp_callback)
-            cb_temp.append(temp_name)
+            cb = options.get(name)
+            callback_list.append(cb(**auto.get(name)))
+            callback_names.append(cb.__name__)
+            print(f'Added callback {cb.__name__}.\n{len(callback_list)} callbacks enabled.')
 
-    return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
+    return callback_list, 'Callbacks: ' + ', '.join(callback_names) + '\n\n'
+
+
+# # Add/change callbacks IN this function
+# def get_cbs1(model_dir: str, init_epoch: int = 0, auto=None):
+#     """
+#     Function to generate and return callbacks and a log message containing callback names.
+#
+#     :param model_dir: Path to model folder, string.
+#     :param init_epoch: Initial epoch of training instance, int.
+#     :param auto: Can be supplied as a list or dictionary.
+#                  As a list of names of callbacks by keys:
+#                     'tb'    - TensorBoard
+#                     'bst'   - Best Checkpoint
+#                     'estop' - Early Stopping
+#                     'redlr' - Reduce LR on Plateau
+#
+#                  e.g: ['tb','bst','redlr']
+#                  Such a call will result in default values taken for callback parameters as defined in THIS function.
+#                  To alter default values of arguments a dictionary is used employing the same key naming scheme above.
+#                  Each value is an appropriate kwargs dictionary for the specific callback.
+#                  Not all arguments must be specified, only valid supplied kwargs will be altered.
+#
+#                  e.g: {'tb' : {'log_dir':'foo/bar'},'bst':{'verbose':0,'save_weights_only':True}}
+#
+#                  Should one wish to include a callback with its default parameter settings it may be included
+#                  in the dictionary along with any value as only matching kwargs are used.
+#
+#                  e.g: {{'tb' : {'log_dir' : 'foo/bar'}, 'bst' : {'verbose' : 0, 'save_weights_only' : True}}, 'redlr' : 0}
+#
+#                  Default parameter values (see TensorFlow documentation for more information on specific parameters) :
+#                     TensorBoard:
+#                         'log_dir' = f'logs/{basename(model_dir)}'
+#                         'histogram_freq' = 0
+#                         'write_graph' = True,
+#                         'write_images' = False
+#                         'write_steps_per_second' = False
+#                         'update_freq' = 'epoch'
+#                         'profile_batch' = 2
+#                         'embeddings_freq' = 0
+#                         'embeddings_metadata' = None
+#                     Best Checkpoint:
+#                         'monitor' = 'val_loss'
+#                         'verbose' = 1
+#                         'save_weights_only' = False
+#                         'mode' = 'min'
+#                         'options' = None
+#                     Early Stopping:
+#                         'monitor' = 'val_loss'
+#                         'min_delta' = 1e-3
+#                         'patience' = 5
+#                         'mode' = 'auto'
+#                         'verbose' = 1
+#                         'baseline' = None
+#                         'restore_best_weights' = False
+#                     Reduce LR on Plateau:
+#                         'monitor' = 'val_loss'
+#                         'factor' = 0.2
+#                         'patience' = 5
+#                         'verbose' = 1
+#                         'mode' = 'auto'
+#                         'min_delta' = 1e-4
+#                         'cooldown' = 0
+#                         'min_lr' = 0
+#     :return: List of callbacks and log line (string) as a list of two objects. [callbacks,callback_log]
+#     """
+#     cb_names = {'tb': 'TensorBoard',
+#                 'bst': 'Best Checkpoint',
+#                 'estop': 'Early Stopping',
+#                 'redlr': 'Reduce LR on Plateau'}
+#     cb_dict = {'tb': TensorBoard,
+#                'bst': BestCheckpoint,
+#                'estop': EarlyStopping,
+#                'redlr': ReduceLROnPlateau}
+#     kwargs_dic = {'tb': {'log_dir': f'logs/{basename(model_dir)}', 'histogram_freq': 0, 'write_graph': True,
+#                          'write_images': False, 'write_steps_per_second': False, 'update_freq': 'epoch',
+#                          'profile_batch': 2, 'embeddings_freq': 0, 'embeddings_metadata': None},
+#                   'bst': {'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
+#                           'mode': 'min', 'options': None},
+#                   'estop': {'monitor': 'val_loss', 'min_delta': 1e-3, 'patience': 5, 'mode': 'auto', 'verbose': 1,
+#                             'baseline': None, 'restore_best_weights': False},
+#                   'redlr': {'monitor': 'val_loss', 'factor': 0.2, 'patience': 5, 'verbose': 1, 'mode': 'auto',
+#                             'min_delta': 1e-4, 'cooldown': 0, 'min_lr': 0}}
+#     num_cbs = len(cb_dict)
+#     # IMPORTANT NOTE:
+#     # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly.
+#     # It MUST precede BestCheckpoint in the list of callbacks.
+#     # As it is currently, BestCheckpoint is always added after TimeHistory.
+#     # No error will be thrown over this but it will seamlessly affect the log files, beware!
+#     # (See comments in BestCheckpoint._save_model() method)
+#
+#     # Add TimeHistory and AutoCheckpoint to the callbacks and callback names lists
+#     callbacks = [TimeHistory(model_dir=model_dir, initial_epoch=init_epoch),
+#                  AutoCheckpoint(model_dir=model_dir)]
+#     cb_temp = ['Epoch Timing', 'Model Checkpoint']
+#
+#     if auto is None:
+#         # User should be interacting with the menu, this is always the case when this function is used internally
+#         cb_prompt = f'Select callbacks to utilize.\nNote: time logging and model checkpoint are on by default and ' \
+#                     f'cannot be turned off\nas they are necessary for epoch timing and model saving (' \
+#                     f'respectively).\nInput \'q\' to quit this menu.'
+#         # get callback to append
+#         user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'quit'})
+#         while not (user_inp == 'q' or len(callbacks) - 2 == num_cbs):
+#             key_prompt = f' parameter values for {cb_names.get(user_inp)} are listed.\nChoose parameter to ' \
+#                          f'modify or press Enter to approve and continue. '
+#             # prepare the relevant kwargs dictionary
+#             temp_kwargs = kwargs_dic.get(user_inp)
+#             # get key to change or approval from user
+#             temp_key = dic_menu(temp_kwargs, prompt='Default' + key_prompt, key=True, quit_option={'': 'quit'})
+#             # So long as the user hasn't already approved the list of parameters, ask for another
+#             while temp_key:
+#                 # Get new parameter value from user
+#                 set_param(key=temp_key, dic=temp_kwargs)
+#                 # Get new key or approval
+#                 temp_key = dic_menu(temp_kwargs, prompt='Current' + key_prompt, key=True, quit_option={'': 'quit'})
+#             # The model_dir shouldn't really  be changed by the user, it's built to work with the folder scheme.
+#             # Add it post user input as a kwarg
+#             if user_inp == 'bst':
+#                 temp_kwargs.update({'model_dir': model_dir})
+#             # Pop the relevant data from the dictionaries and append it to the tally
+#             # The options are popped so that they no longer show up in the user menu
+#             temp_callback = cb_dict.pop(user_inp)(**temp_kwargs)
+#             temp_name = cb_names.pop(user_inp)
+#             callbacks.append(temp_callback)
+#             cb_temp.append(temp_name)
+#             print(f'Added callback {temp_name}.\n{len(callbacks)}/{num_cbs + 2} callbacks enabled.')
+#             # Have we exhausted the list of available callbacks?
+#             if len(callbacks) - 2 != num_cbs:
+#                 user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'Quit'})
+#             else:
+#                 print('All callbacks enabled. Proceeding.')
+#     else:
+#         # The function may have been called externally to this script and can be supplied with arguments
+#         # in order to circumvent the need for user input
+#         for name in auto:
+#             # prepare the kwargs dictionary
+#             temp_kwargs = kwargs_dic.get(name)
+#             # if the value is itself a dictionary check if it has any valid parameters
+#             # otherwise use default
+#             if isinstance(auto, dict) and isinstance(auto.get(name), dict):
+#                 [temp_kwargs.update({key: auto.get(name).get(key, temp_kwargs.get(key))}) for key in temp_kwargs]
+#             # Get the relevant data from the dictionaries and append it to the tally
+#             temp_callback = cb_dict.get(name)(**temp_kwargs)
+#             temp_name = cb_names.get(name)
+#             callbacks.append(temp_callback)
+#             cb_temp.append(temp_name)
+#
+#     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
 
 
 def get_dir_gui(base: str = './', title='Select folder'):
+    """
+    Get an existing directory via gui interface.
+
+    :param base: Initial path of prompt, string.
+    :param title: Window title, string.
+    :return: Sanitized path as string.
+    """
     root = Tk()
     root.withdraw()
     root.wm_attributes('-topmost', 1)
@@ -620,23 +807,26 @@ def get_dir_gui(base: str = './', title='Select folder'):
     return sanitize_path(filepath).removeprefix(sanitize_path(os.getcwd()) + '/')
 
 
-def set_param(key, dic: dict):
-    """
-    Modifies existing value of key in dic via user input.
-    :param key: Key whose value is to be changed.
-    :param dic: Dictionary in which to make the change, dict.
-    """
-    if key not in dic.keys():
-        raise KeyError(f'Key {key} not found.')
-    prompt = f'Changing value of {key}.\nLeave blank to leave field unchanged.\n{key}='
-    user_inp = sanitize_param(input(prompt))
-    if user_inp:
-        dic.update({key: user_inp})
+# #TODO maybe change
+# def set_param(key, dic: dict):
+#     """
+#     Modifies existing value of key in dic via user input.
+#
+#     :param key: Key whose value is to be changed.
+#     :param dic: Dictionary in which to make the change, dict.
+#     """
+#     if key not in dic.keys():
+#         raise KeyError(f'Key {key} not found.')
+#     prompt = f'Changing value of {key}.\nLeave blank to leave field unchanged.\n{key}='
+#     user_inp = sanitize_param(input(prompt))
+#     if user_inp:
+#         dic.update({key: user_inp})
 
 
 def get_nat(name: str, limit: int = np.inf):
     """
     Gets a natural number from the user.
+
     :param name: Name of parameter to request, str.
     :param limit: (Optional) Largest acceptable number, int.
     :return: Natural number from user as integer.
@@ -651,6 +841,7 @@ def get_nat(name: str, limit: int = np.inf):
 def validate_data(training: tuple, validation: tuple):
     """
     Validates that the input and label data are of matching shapes
+
     :param training: Tuple of directories to training data in the form (input, label)
     :param validation: Tuple of directories to validation data in the form (input, label)
     :return: List of: number of training instances(int),number of validation instances(int), input shape (H,W,D) (tuple)
@@ -667,6 +858,7 @@ def validate_data(training: tuple, validation: tuple):
 def get_dir(target, new: bool, base=''):
     """
     Requests a directory from the user.
+
     :param target: The target of the directory, some name describing the request, string.
     :param new: Should the directory exist (False) or not (True), boolean.
     :param base: Underlying path in which to create the new directory, string.
@@ -692,6 +884,7 @@ def get_dir(target, new: bool, base=''):
 def dic_menu(dic: dict, prompt='', pop=False, key=False, quit_option: dict = None):
     """
     Creates a UI menu from dictionary.
+
     :param dic: Dictionary containing menu items in the form {label:action}, dict. Keys should be castable to string.
     :param prompt: Prompt to show the user, string. Empty by default.
     :param pop: Pop the chosen option from the dictionary, boolean. False by default.
@@ -712,7 +905,7 @@ def dic_menu(dic: dict, prompt='', pop=False, key=False, quit_option: dict = Non
         # return the only option as long as there isn't a quit option
         return list(dic.keys() if key else dic.values())[0]
     # calculate the length of the menu for aesthetic purposes
-    line_length = np.max([len(f'{x}') for x in dic.values()])
+    line_length = np.max([len(f'{x}') for x in dic.values()] or 50)
     promp_length = np.max([len(x) for x in prompt.split('\n')])
     line_length = np.max([line_length + 10, promp_length, 50])
     # prepare prompt to user
@@ -722,7 +915,7 @@ def dic_menu(dic: dict, prompt='', pop=False, key=False, quit_option: dict = Non
     temp_dic = {str(k): v for k, v in dic.items()}
     if quit_option:
         # add quit options. note these will not be displayed as the prompt has already been established
-        temp_dic.update({str(k): v for k, v in quit_option.items()})
+        temp_dic.update({str(k): (v if v is not None else '') for k, v in quit_option.items()})
     # Finally get the user input and check that such a key exists in the dictionary
     user_inp = input(prompt)
     result = temp_dic.get(user_inp, None)
@@ -731,7 +924,7 @@ def dic_menu(dic: dict, prompt='', pop=False, key=False, quit_option: dict = Non
         user_inp = input(prompt)
         result = temp_dic.get(user_inp, None)
     if pop:
-        dic.pop(sanitize_param(user_inp))
+        dic.pop(sanitize_param(user_inp), None)
 
     return sanitize_param(user_inp) if key else result
 
@@ -790,7 +983,8 @@ def initiate_training(**kwargs):
     training_dir = sanitize_path(kwargs.get('training_dir'))
     # training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
     print('Select training directory')
-    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir_gui(title='Select training directory')
+    training_dir = training_dir if training_dir and isdir(training_dir) else get_dir_gui(
+        title='Select training directory')
 
     dirs = get_training_files(training_dir=training_dir)
 
@@ -806,6 +1000,7 @@ def sanitize_path(path: str):
     """
     Sanitizes a path such that any back slashes are transformed to front slashes.
     Slashes are also removed from the ends of the path should they exist.
+
     :param path: Path to sanitize, string.
     :return: Sanitized path as string of the form:
                 \\folder1\\folder2/folder3/ --> folder1/folder2/folder3
@@ -876,8 +1071,9 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
         model_dir = get_dir(target='model', new=True, base=model_dir)
 
     model_name = basename(model_dir)
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=0, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
+    callbacks, callback_log = get_cbs(model_dir=model_dir, epochs=epochs, batch_size=batch_size, init_epoch=0,
+                                      auto=kwargs.get('callback', None))
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
 
     ### Creating the model directory ###
@@ -960,8 +1156,9 @@ def load_cnn(**kwargs):
         model_to_load = dir_menu(pattern=f'{model_dir}/*/*.h5', prompt='Choose checkpoint to load', sanitize=model_dir)
 
     init_epoch = int(rmatch(r'.*epoch=(\d+).*', model_to_load).group(1))
-    callbacks, callback_log = get_cbs(model_dir=model_dir, init_epoch=init_epoch, auto=kwargs.get('callback', None))
     batch_size, epochs, training, validation = initiate_training(**kwargs)
+    callbacks, callback_log = get_cbs(model_dir=model_dir, epochs=epochs, batch_size=batch_size, init_epoch=init_epoch,
+                                      auto=kwargs.get('callback', None))
     num_sample, num_val, input_shape = validate_data(training=training, validation=validation)
     # get init_epoch from save name
     print('Preparing log file.')
