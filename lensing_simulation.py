@@ -12,7 +12,7 @@ import numpy as np
 from os.path import isfile, isdir, dirname
 from pathlib import Path
 
-from LensCNN import get_dir
+from LensCNN import get_dir_gui
 
 import winsound
 
@@ -285,7 +285,7 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
     # Generates {stacks} bunches of {stack_size images}.
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # val_split = 0.1
-    training_dir = get_dir('training', new=True)
+    training_dir = get_dir_gui(title='Select folder to save training data')
     num_train, num_val = np.around(stack_size * stacks * np.array([1 - val_split, val_split])).astype('int')
     if num_train + num_val == stacks * stack_size + 1:
         num_train -= 1
@@ -304,7 +304,7 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
 def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     light_model = LightModel(light_model_list=['SERSIC'])
     if action == 'save_img':
-        img_dir = get_dir('image', new=False)
+        img_dir = get_dir_gui(title='Image save location')
     else:
         img_dir = action
     stack_size *= stacks

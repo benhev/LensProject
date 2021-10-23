@@ -264,19 +264,6 @@ def npy_get_shape(file: str):
     return shape
 
 
-def get_file(text: str = 'Input path:'):
-    """
-    Function to ensure input exists as a file.
-
-    :param text: Prompt text.
-    :return: Path to existing file.
-    """
-    txt = input(text)
-    while not isfile(txt):
-        txt = input(f'File does not exist!\n{text}')
-    return sanitize_path(txt)
-
-
 def npy_read(filename: str, start_row, num_rows):
     """
     Modified from function originally written by:
@@ -439,19 +426,6 @@ def create_log(batch_size: int, epochs: int, numsample: int, numval: int, input_
     return temp
 
 
-def isnat(test):
-    """
-    Returns True if test is an integer larger than 0 (Natural), and False otherwise.
-
-    :param test: object to test, any.
-    :return: Boolean.
-    """
-    try:
-        return True if int(test) > 0 else False
-    except ValueError:
-        return False
-
-
 def sanitize_param(param):
     """
     Sanitizes input parameters for dynamic function calling.
@@ -492,10 +466,18 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
     """
 
     def get_args(func):
+        """
+        This function retrieves arguments of a callable from its signature and returns a dictionary of arguments.
+        Arguments which do not have default values are returned with a value of '' (empty string).
+
+        :param func: Some callable object.
+        :return: Dictionary of arguments, dict.
+        """
         sig = inspect.signature(func)
         args = {}
         for param in sig.parameters.values():
             args.update({param.name: '' if param.default is param.empty else param.default})
+        # Not interested in args and kwargs (good enough for callbacks)
         args.pop('args', None)
         args.pop('kwargs', None)
         return args
@@ -641,160 +623,13 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
     return callback_list, 'Callbacks: ' + ', '.join(callback_names) + '\n\n'
 
 
-# # Add/change callbacks IN this function
-# def get_cbs1(model_dir: str, init_epoch: int = 0, auto=None):
-#     """
-#     Function to generate and return callbacks and a log message containing callback names.
-#
-#     :param model_dir: Path to model folder, string.
-#     :param init_epoch: Initial epoch of training instance, int.
-#     :param auto: Can be supplied as a list or dictionary.
-#                  As a list of names of callbacks by keys:
-#                     'tb'    - TensorBoard
-#                     'bst'   - Best Checkpoint
-#                     'estop' - Early Stopping
-#                     'redlr' - Reduce LR on Plateau
-#
-#                  e.g: ['tb','bst','redlr']
-#                  Such a call will result in default values taken for callback parameters as defined in THIS function.
-#                  To alter default values of arguments a dictionary is used employing the same key naming scheme above.
-#                  Each value is an appropriate kwargs dictionary for the specific callback.
-#                  Not all arguments must be specified, only valid supplied kwargs will be altered.
-#
-#                  e.g: {'tb' : {'log_dir':'foo/bar'},'bst':{'verbose':0,'save_weights_only':True}}
-#
-#                  Should one wish to include a callback with its default parameter settings it may be included
-#                  in the dictionary along with any value as only matching kwargs are used.
-#
-#                  e.g: {{'tb' : {'log_dir' : 'foo/bar'}, 'bst' : {'verbose' : 0, 'save_weights_only' : True}}, 'redlr' : 0}
-#
-#                  Default parameter values (see TensorFlow documentation for more information on specific parameters) :
-#                     TensorBoard:
-#                         'log_dir' = f'logs/{basename(model_dir)}'
-#                         'histogram_freq' = 0
-#                         'write_graph' = True,
-#                         'write_images' = False
-#                         'write_steps_per_second' = False
-#                         'update_freq' = 'epoch'
-#                         'profile_batch' = 2
-#                         'embeddings_freq' = 0
-#                         'embeddings_metadata' = None
-#                     Best Checkpoint:
-#                         'monitor' = 'val_loss'
-#                         'verbose' = 1
-#                         'save_weights_only' = False
-#                         'mode' = 'min'
-#                         'options' = None
-#                     Early Stopping:
-#                         'monitor' = 'val_loss'
-#                         'min_delta' = 1e-3
-#                         'patience' = 5
-#                         'mode' = 'auto'
-#                         'verbose' = 1
-#                         'baseline' = None
-#                         'restore_best_weights' = False
-#                     Reduce LR on Plateau:
-#                         'monitor' = 'val_loss'
-#                         'factor' = 0.2
-#                         'patience' = 5
-#                         'verbose' = 1
-#                         'mode' = 'auto'
-#                         'min_delta' = 1e-4
-#                         'cooldown' = 0
-#                         'min_lr' = 0
-#     :return: List of callbacks and log line (string) as a list of two objects. [callbacks,callback_log]
-#     """
-#     cb_names = {'tb': 'TensorBoard',
-#                 'bst': 'Best Checkpoint',
-#                 'estop': 'Early Stopping',
-#                 'redlr': 'Reduce LR on Plateau'}
-#     cb_dict = {'tb': TensorBoard,
-#                'bst': BestCheckpoint,
-#                'estop': EarlyStopping,
-#                'redlr': ReduceLROnPlateau}
-#     kwargs_dic = {'tb': {'log_dir': f'logs/{basename(model_dir)}', 'histogram_freq': 0, 'write_graph': True,
-#                          'write_images': False, 'write_steps_per_second': False, 'update_freq': 'epoch',
-#                          'profile_batch': 2, 'embeddings_freq': 0, 'embeddings_metadata': None},
-#                   'bst': {'monitor': 'val_loss', 'verbose': 1, 'save_weights_only': False,
-#                           'mode': 'min', 'options': None},
-#                   'estop': {'monitor': 'val_loss', 'min_delta': 1e-3, 'patience': 5, 'mode': 'auto', 'verbose': 1,
-#                             'baseline': None, 'restore_best_weights': False},
-#                   'redlr': {'monitor': 'val_loss', 'factor': 0.2, 'patience': 5, 'verbose': 1, 'mode': 'auto',
-#                             'min_delta': 1e-4, 'cooldown': 0, 'min_lr': 0}}
-#     num_cbs = len(cb_dict)
-#     # IMPORTANT NOTE:
-#     # TimeHistory is part of the custom logging procedure and is necessary for BestCheckpoint to function properly.
-#     # It MUST precede BestCheckpoint in the list of callbacks.
-#     # As it is currently, BestCheckpoint is always added after TimeHistory.
-#     # No error will be thrown over this but it will seamlessly affect the log files, beware!
-#     # (See comments in BestCheckpoint._save_model() method)
-#
-#     # Add TimeHistory and AutoCheckpoint to the callbacks and callback names lists
-#     callbacks = [TimeHistory(model_dir=model_dir, initial_epoch=init_epoch),
-#                  AutoCheckpoint(model_dir=model_dir)]
-#     cb_temp = ['Epoch Timing', 'Model Checkpoint']
-#
-#     if auto is None:
-#         # User should be interacting with the menu, this is always the case when this function is used internally
-#         cb_prompt = f'Select callbacks to utilize.\nNote: time logging and model checkpoint are on by default and ' \
-#                     f'cannot be turned off\nas they are necessary for epoch timing and model saving (' \
-#                     f'respectively).\nInput \'q\' to quit this menu.'
-#         # get callback to append
-#         user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'quit'})
-#         while not (user_inp == 'q' or len(callbacks) - 2 == num_cbs):
-#             key_prompt = f' parameter values for {cb_names.get(user_inp)} are listed.\nChoose parameter to ' \
-#                          f'modify or press Enter to approve and continue. '
-#             # prepare the relevant kwargs dictionary
-#             temp_kwargs = kwargs_dic.get(user_inp)
-#             # get key to change or approval from user
-#             temp_key = dic_menu(temp_kwargs, prompt='Default' + key_prompt, key=True, quit_option={'': 'quit'})
-#             # So long as the user hasn't already approved the list of parameters, ask for another
-#             while temp_key:
-#                 # Get new parameter value from user
-#                 set_param(key=temp_key, dic=temp_kwargs)
-#                 # Get new key or approval
-#                 temp_key = dic_menu(temp_kwargs, prompt='Current' + key_prompt, key=True, quit_option={'': 'quit'})
-#             # The model_dir shouldn't really  be changed by the user, it's built to work with the folder scheme.
-#             # Add it post user input as a kwarg
-#             if user_inp == 'bst':
-#                 temp_kwargs.update({'model_dir': model_dir})
-#             # Pop the relevant data from the dictionaries and append it to the tally
-#             # The options are popped so that they no longer show up in the user menu
-#             temp_callback = cb_dict.pop(user_inp)(**temp_kwargs)
-#             temp_name = cb_names.pop(user_inp)
-#             callbacks.append(temp_callback)
-#             cb_temp.append(temp_name)
-#             print(f'Added callback {temp_name}.\n{len(callbacks)}/{num_cbs + 2} callbacks enabled.')
-#             # Have we exhausted the list of available callbacks?
-#             if len(callbacks) - 2 != num_cbs:
-#                 user_inp = dic_menu(dic=cb_names, prompt=cb_prompt, key=True, quit_option={'q': 'Quit'})
-#             else:
-#                 print('All callbacks enabled. Proceeding.')
-#     else:
-#         # The function may have been called externally to this script and can be supplied with arguments
-#         # in order to circumvent the need for user input
-#         for name in auto:
-#             # prepare the kwargs dictionary
-#             temp_kwargs = kwargs_dic.get(name)
-#             # if the value is itself a dictionary check if it has any valid parameters
-#             # otherwise use default
-#             if isinstance(auto, dict) and isinstance(auto.get(name), dict):
-#                 [temp_kwargs.update({key: auto.get(name).get(key, temp_kwargs.get(key))}) for key in temp_kwargs]
-#             # Get the relevant data from the dictionaries and append it to the tally
-#             temp_callback = cb_dict.get(name)(**temp_kwargs)
-#             temp_name = cb_names.get(name)
-#             callbacks.append(temp_callback)
-#             cb_temp.append(temp_name)
-#
-#     return callbacks, 'Callbacks: ' + ', '.join(cb_temp) + '\n\n'
-
-
-def get_dir_gui(base: str = './', title='Select folder'):
+def get_dir_gui(base: str = './', title='Select folder', file=False):
     """
     Get an existing directory via gui interface.
 
     :param base: Initial path of prompt, string.
     :param title: Window title, string.
+    :param file: Get file instead of directory, boolean. False by default.
     :return: Sanitized path as string.
     """
     root = Tk()
@@ -802,25 +637,12 @@ def get_dir_gui(base: str = './', title='Select folder'):
     root.wm_attributes('-topmost', 1)
     filepath = ''
     while not filepath:
-        filepath = filedlg.askdirectory(initialdir=base, title=title)
+        if file:
+            filepath = filedlg.askopenfilename(initialdir=base, title=title)
+        else:
+            filepath = filedlg.askdirectory(initialdir=base, title=title)
     root.destroy()
     return sanitize_path(filepath).removeprefix(sanitize_path(os.getcwd()) + '/')
-
-
-# #TODO maybe change
-# def set_param(key, dic: dict):
-#     """
-#     Modifies existing value of key in dic via user input.
-#
-#     :param key: Key whose value is to be changed.
-#     :param dic: Dictionary in which to make the change, dict.
-#     """
-#     if key not in dic.keys():
-#         raise KeyError(f'Key {key} not found.')
-#     prompt = f'Changing value of {key}.\nLeave blank to leave field unchanged.\n{key}='
-#     user_inp = sanitize_param(input(prompt))
-#     if user_inp:
-#         dic.update({key: user_inp})
 
 
 def get_nat(name: str, limit: int = np.inf):
@@ -831,6 +653,19 @@ def get_nat(name: str, limit: int = np.inf):
     :param limit: (Optional) Largest acceptable number, int.
     :return: Natural number from user as integer.
     """
+
+    def isnat(test):
+        """
+        Returns True if test is an integer larger than 0 (Natural), and False otherwise.
+
+        :param test: object to test, any.
+        :return: Boolean.
+        """
+        try:
+            return True if int(test) > 0 else False
+        except ValueError:
+            return False
+
     nat = input('Enter a positive integer' + (f' no larger than {limit}' if limit != np.inf else '') + f' for {name}: ')
     while not isnat(nat) or (isnat(nat) and int(nat) > limit):
         nat = input(f'{name} should be a positive integer' + (
@@ -959,7 +794,7 @@ def get_training_files(training_dir: str, validation=True):
         for key in missing:
             # request the file from the user
             print(f'{key.replace("_", " ")} file not found.')
-            temp_dir = get_file(key.replace('_', ' ') + ':')
+            temp_dir = get_dir_gui(title=key.replace('_', ' '), file=True)
             dirs.update({key: temp_dir})
 
     return dirs
@@ -1248,13 +1083,6 @@ def train_model(model: Sequential, batch_size, epochs, training, validation, cal
         dump(history.history, file)
     write_log(model_dir=model_dir, log=f'{model.name} completed training sequence successfully.\n', insert=True)
     print(f'{model.name} has finished training successfully.')
-
-
-# def leave(**kwargs):
-#     """
-#     This function is for syntax purposes only.
-#     """
-#     pass
 
 
 def main():
