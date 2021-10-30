@@ -452,7 +452,6 @@ def sanitize_param(param):
         raise TypeError(f'{param} is neither a string nor iterable.')
 
 
-# TODO docs
 def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
     """
     Function to generate and return callbacks and a log message containing callback names.
@@ -483,6 +482,12 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
         return args
 
     def check_parents(test_class, test_parents):
+        """
+        Check if a class extends one from the given list.
+        :param test_class: Class to check bases, class object.
+        :param test_parents: Classes to test against, list of classes.
+        :return: True if a requested parent class is found, False otherwise.
+        """
         if not isinstance(test_parents, list):
             test_parents = [test_parents]
         for parent in test_class.__bases__:
@@ -491,14 +496,29 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
         return False
 
     def set_param(dic: dict, k=None, required=False, new=False):
+        """
+        Set value of key in dictionary to new value input from user.
+        If new=False, key must be supplied.
+        If new=True then required is automatically changed to False as it is not necessary.
+        Input is treated as Python expression.
+
+        :param dic: Dictionary of values, dict.
+        :param k: Key to change. Required if not new.
+        :param required: If key must receive a value (that is no value has been previously established, boolean. False by default.
+        :param new: If the required key is new and should be requested from the user, boolean. False by default.
+        :return:
+        """
+        # Declare non-local variables to use from outside scope
         nonlocal model_dir, model_name, epochs, batch_size, init_epoch
         if not new and k not in dic.keys():
+            # If not new, the key should exist.
             raise KeyError(f'Key {k} not found.')
         if new:
             required = False
             k = input('Input keyword to set:')
             if k == '':
                 return
+            # Try to guess a value
             gss = [gkey for gkey in sorted(guess_dic.keys()) if gkey in k]
             if gss:
                 gss = k if k in gss else gss[0]
@@ -529,6 +549,11 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
                 pass
 
     def get_verify_cb():
+        """
+        Get a callback from user.
+        Prints documentation, before asking for approval of the selected callback.
+        :return: Callback.
+        """
         add = False
         temp_cb = dic_menu(dict(zip(range(1, 1 + len(options)), options.keys())), prompt=cb_prompt,
                            quit_option={'q': ''})
