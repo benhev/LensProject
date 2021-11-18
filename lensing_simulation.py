@@ -14,26 +14,38 @@ from pathlib import Path
 
 from LensCNN import get_dir_gui
 
-import winsound
+# import winsound
 
-FREQ = 1000  # Set Frequency To 2500 Hertz
-DUR = 500  # Set Duration To 1000 ms == 1 second
+# FREQ = 1000  # Set Frequency To 2500 Hertz
+# DUR = 500  # Set Duration To 1000 ms == 1 second
 
 MARGIN_FRACTION = 0.4
 VAL_SPLIT = 0.1
 
 
-def dist_check(lens_center, prev_centers, rng):
-    prev_centers = np.array(prev_centers)
-
-    # finish distance checking so two lenses are not too close together
-    for center in prev_centers:
-        if np.linalg.norm(center - lens_center) < rng:
-            return True
-    return False  # True if len(prev_centers) == 0 else False
+# def dist_check(lens_center, prev_centers, rng):
+#     prev_centers = np.array(prev_centers)
+#
+#     # finish distance checking so two lenses are not too close together
+#     for center in prev_centers:
+#         if np.linalg.norm(center - lens_center) < rng:
+#             return True
+#     return False  # True if len(prev_centers) == 0 else False
 
 
 def npy_write(filename: str, start_row, arr, size=None):
+    """
+    Custom function to write to an existing numpy file.
+    Based on npy_write from LensCNN (See docs therein for author credits).
+
+    :param filename: File to which the function will write, string.
+    :param start_row: Initial position in which to start filling data, int.
+                      This corresponds to the array index if the entire file was loaded into memory.
+    :param arr: Array to write, np.ndarray.
+    :param size: (Optional) Shape of numpy array to create, tuple. Only required if the file does not exist.
+                            If file does not exist, will attempt to create one, in which case size must be given.
+    :return: Index immediately after end of data, int.
+    """
     print(f'Writing to {filename} at {start_row}')
     # This function is a hack and does not use documented behavior, though it works.
     assert start_row >= 0 and isinstance(arr, np.ndarray)
@@ -69,8 +81,16 @@ def npy_write(filename: str, start_row, arr, size=None):
         arr.tofile(file)
     return start_row + num_rows
 
-
 def grid(npix, deltapix, origin_ra, origin_dec):
+    """
+    Creates a PixelGrid class.
+
+    :param npix: Number of pixels in each dimension, int.
+    :param deltapix: Pixel resolution (arcsec/pixel), float.
+    :param origin_ra: Right Ascension of origin (in arcsec), float.
+    :param origin_dec: Declination of origin (in arcsec), float.
+    :return: instance of PixelGrid class.
+    """
     _, _, ra_at_xy_0, dec_at_xy_0, _, _, p2a_transform, _ = make_grid_with_coordtransform(numPix=npix,
                                                                                           deltapix=deltapix,
                                                                                           center_ra=origin_ra,
@@ -82,17 +102,19 @@ def grid(npix, deltapix, origin_ra, origin_dec):
     return PixelGrid(**kwargs)
 
 
-def generate_lens(grid_class, light_center):
+def generate_lens(grid_class):
+    """
+    Generates a lens instance with random position and ellipticity.
+
+    :param grid_class: A PixelGrid class on which to place the lens.
+    :return: A LensModel instance and a list of keyword arguments for each lens grouped in a tuple.
+    """
     num_of_lenses = np.random.randint(1, 5)
-    # light_center = np.array(light_center)
     kwargs = []
     centers = []
     for _ in range(num_of_lenses):
         e1, e2 = phiq2el(np.random.uniform(0, np.pi), np.random.uniform(0.7, 1.0))
         theta = np.random.normal(loc=1, scale=0.01)
-        # center = np.array([np.inf, np.inf])
-        # while np.linalg.norm(light_center - center) > 3 * theta or dist_check(lens_center=center,
-        #                                                                       prev_centers=centers, rng=theta):
         center = sample_center(grid_class)
         centers.append(center)
         temp_kwargs = {'center_x': center[0], 'center_y': center[1], 'theta_E': theta, 'e1': e1, 'e2': e2}
@@ -102,6 +124,13 @@ def generate_lens(grid_class, light_center):
 
 
 def contains(txt: str, substr: list):
+    """
+    Checks if any of a list of keywords is found in a given string.
+
+    :param txt: Text to check against, string.
+    :param substr: String(s) to check for, list of strings.
+    :return: True if any substring is found.
+    """
     for line in substr:
         if not isinstance(line, str):
             raise ValueError(f'{substr} is not a list of strings.')
@@ -111,6 +140,14 @@ def contains(txt: str, substr: list):
 
 
 def sample_center(grid_class, margin=MARGIN_FRACTION):
+    """
+    Generates a random point in the grid, taking margins into account.
+    Used to randomize center points for generated lenses.
+
+    :param grid_class: An instance of the PixelGrid class.
+    :param margin: (Optional) Forbidden image margins as fraction of the total dimension, float.
+    :return: 2D vector object, as np.ndarray.
+    """
     assert margin <= 1 / 2, 'MARGIN_FRACTION must be <=1/2.'
     xmin, ymin = (1 - 2 * margin) * np.array(list(map(np.min, grid_class.pixel_coordinates)))
     xmax, ymax = (1 - 2 * margin) * np.array(list(map(np.max, grid_class.pixel_coordinates)))
@@ -122,6 +159,20 @@ def sample_center(grid_class, margin=MARGIN_FRACTION):
 
 
 def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
+    """
+    Generates an image of the lensing scenario.
+    Plots all data supplied, convergence is plotted with log scaling.
+
+    :param data: Image data to plot, list of images.
+    :param names: Names of plots, in order and of the same dimension as data, list of strings.
+    :param kwargs_lens: Keyword arguments for the LensModel class, dict.
+    :param extent: Extent as supplied to matplotlib.pyplot.imshow, tuple.
+    :param save_dir: Directory to save image, string.
+                     Additional options:
+                        'show' - Show the image instead of saving.
+                        'show_debug' - Save a debug image cluster.
+    :param lens_num: (Optional) Lens serial number, int.
+    """
     assert len(data) == len(names), 'Names must match data.'
     fig = plt.figure()
     gs = gridspec.GridSpec(2, 1, figure=fig)
@@ -149,7 +200,6 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
     tbl.auto_set_font_size(False)
     tbl.set_fontsize(12)
     table_ax.add_table(tbl)
-    # fig_size = fig.get_size_inches()
     fig.set_size_inches(3 * len(data), 8)
     if 'show' in save_dir.lower():
         if 'debug' in save_dir.lower():
@@ -171,6 +221,11 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
 
 
 def to_img(data: np.ndarray):
+    """
+    Converts array to image format.
+    :param data: Data to convert, np.ndarray.
+    :return: Reshaped array into image format as np.ndarray.
+    """
     assert len(data.shape) <= 2, f'np.ndarray with shape={data.shape} is invalid'
     if len(data.shape) == 1:
         data = array2image(data)
@@ -178,6 +233,15 @@ def to_img(data: np.ndarray):
 
 
 def generate_stack(npix, deltapix, stack_size, light_model):
+    """
+    Generates a stack of lensing simulation instances.
+
+    :param npix: Number of pixels per dimension, int.
+    :param deltapix: Pixel resolution (arcsec/pixel), float.
+    :param stack_size: Size of stack to generate, int.
+    :param light_model: Light source for which to simulate lensing, LightModel instance.
+    :return: Stack of inputs and labels for each simulated instance as list of np.ndarray.
+    """
     kdata = np.zeros((stack_size, npix, npix, 1))  # Container for kappa data
     imdata = np.zeros((stack_size, npix, npix, 1))  # Container for image data
     for j in range(stack_size):
@@ -189,6 +253,18 @@ def generate_stack(npix, deltapix, stack_size, light_model):
 
 def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light=None,
                       kwargs_lens=None):
+    """
+    Generates an instance of lensing simulation.
+
+    :param npix: Number of pixels per dimesion, int.
+    :param deltapix: Pixel resolution (arcsec/pixels), float.
+    :param light_model: (Optional) Light source, LightModel instance. Defaults to Sersic.
+    :param save_dir: (Optional)
+    :param instance:
+    :param kwargs_light:
+    :param kwargs_lens:
+    :return:
+    """
     kwargs_light = {} if kwargs_light is None else kwargs_light
     kwargs_lens = {} if kwargs_lens is None else kwargs_lens
     light_model = light_model or LightModel(['SERSIC'])
@@ -209,7 +285,7 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     kwargs_light = [kwargs_light]
     # Lens
     if not kwargs_lens:
-        lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid, light_center=light_center)
+        lens_model, kwargs_lens = generate_lens(grid_class=pixel_grid)
     else:
         lens_model = LensModel(['SIE'] * len(kwargs_lens))
     # Image Model
