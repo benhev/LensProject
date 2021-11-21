@@ -14,23 +14,8 @@ from pathlib import Path
 
 from LensCNN import get_dir_gui
 
-# import winsound
-
-# FREQ = 1000  # Set Frequency To 2500 Hertz
-# DUR = 500  # Set Duration To 1000 ms == 1 second
-
 MARGIN_FRACTION = 0.4
 VAL_SPLIT = 0.1
-
-
-# def dist_check(lens_center, prev_centers, rng):
-#     prev_centers = np.array(prev_centers)
-#
-#     # finish distance checking so two lenses are not too close together
-#     for center in prev_centers:
-#         if np.linalg.norm(center - lens_center) < rng:
-#             return True
-#     return False  # True if len(prev_centers) == 0 else False
 
 
 def npy_write(filename: str, start_row, arr, size=None):
@@ -73,8 +58,7 @@ def npy_write(filename: str, start_row, arr, size=None):
         else:
             assert arr.shape == shape[1:]
         assert start_row + num_rows <= shape[0]
-        # Get the number of elements in one 'row' by taking
-        # a product over all other dimensions.
+        # Get the number of elements in one 'row' by taking a product over all other dimensions.
         row_size = np.prod(shape[1:])
         start_byte = np.prod([start_row, row_size, dtype.itemsize], dtype='int64')
         file.seek(start_byte, 1)
@@ -152,9 +136,11 @@ def sample_center(grid_class, margin=MARGIN_FRACTION):
     assert margin <= 1 / 2, 'MARGIN_FRACTION must be <=1/2.'
     xmin, ymin = (1 - 2 * margin) * np.array(list(map(np.min, grid_class.pixel_coordinates)))
     xmax, ymax = (1 - 2 * margin) * np.array(list(map(np.max, grid_class.pixel_coordinates)))
-    # grid_len = len(grid_class.pixel_coordinates[0])
-    # margin = np.floor(MARGIN_FRACTION * grid_len)
     cx, cy = list(map(lambda x: np.random.uniform(*x), [(xmin, xmax), (ymin, ymax)]))
+    # There used to be an issue with random numbers as input to lenstronomy. Probably due to some numerical issue,
+    # floats beyond some precision generate weird effects in the generated data. They were originally rounded;
+    # however, using the new generation method implemented above this appears to be unnecessary. It is left in the
+    # interest of completeness
     # cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=1)
     return np.array([cx, cy])
 
@@ -244,8 +230,10 @@ def generate_stack(npix, deltapix, stack_size, light_model):
     :param light_model: Light source for which to simulate lensing, LightModel instance.
     :return: Stack of inputs and labels for each simulated instance as list of np.ndarray.
     """
-    kdata = np.zeros((stack_size, npix, npix, 1))  # Container for kappa data
-    imdata = np.zeros((stack_size, npix, npix, 1))  # Container for image data
+    # Container for kappa data
+    kdata = np.zeros((stack_size, npix, npix, 1))
+    # Container for image data
+    imdata = np.zeros((stack_size, npix, npix, 1))
     for j in range(stack_size):
         kappa, image = generate_instance(npix=npix, deltapix=deltapix, light_model=light_model)
         kdata[j] = kappa
@@ -272,7 +260,6 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     kwargs_light = {} if kwargs_light is None else kwargs_light
     kwargs_lens = {} if kwargs_lens is None else kwargs_lens
     light_model = light_model or LightModel(['SERSIC'])
-    # numeric kwargs
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}
     # PSF
     kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
@@ -296,18 +283,18 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     image_model = ImageModel(data_class=pixel_grid, psf_class=psf, lens_model_class=lens_model,
                              source_model_class=light_model,
                              lens_light_model_class=None,
-                             kwargs_numerics=kwargs_nums)  # , point_source_class=None)
+                             kwargs_numerics=kwargs_nums)
     # We can add noise to images, see Lenstronomy documentation and examples.
     image = to_img(image_model.image(kwargs_lens=kwargs_lens, kwargs_source=kwargs_light,
                                      lens_light_add=False, kwargs_ps=None))
     kappa = to_img(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
 
-    # For simulation of images - mainly testing purposes
+    # The distinction is made in order to get images instead of raw data - mainly for testing purposes
     if save_dir is None:
         return [kappa, image]
     else:
-        # brightness is not implemented in saving but this can be done very quickly by adding a few lines
-        # very similar to the commands saving imdata and kdata
+        # brightness (i.e unlensed image) is not implemented in saving data but this can be done very quickly by
+        # adding a few lines, much like the commands saving imdata and kdata
         brightness = to_img(light_model.surface_brightness(x=xgrid, y=ygrid, kwargs_list=kwargs_light))
         alpha_x, alpha_y = list(map(to_img, lens_model.alpha(x=xgrid, y=ygrid, kwargs=kwargs_lens)))
         make_image(data=[image, kappa, brightness, alpha_x, alpha_y],
@@ -366,6 +353,8 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
                                         size=num_val)
                 num_val -= (stack_size - num_train)
             else:
+                # This part of the code shouldn't be reached, no error is thrown so that data isn't lost
+                # However if this message is shown it means too many instances were generated (which shouldn't happen)
                 print('Warning! Too many instances generated.')
             num_train -= num_train
     elif num_val > 0:
@@ -376,6 +365,7 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
             val_lab_pos = npy_write(f'{training_dir}/validation_label.npy', val_lab_pos, kdata, size=num_val)
             num_val -= stack_size
         else:
+            # Identical to case detailed above
             print('Warning! Too many instances generated.')
     elif num_val < 0 or num_train < 0:
         raise ValueError(f'Negative num: num_train={num_train},num_val={num_val}')
@@ -395,9 +385,7 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
     :param val_split: (Optional) Validation split fraction, float. Defaults to VAL_SPLIT global variable.
     :return: training directory as string.
     """
-
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
-    # val_split = 0.1
     training_dir = get_dir_gui(title='Select folder to save training data')
     num_train, num_val = np.around(stack_size * stacks * np.array([1 - val_split, val_split])).astype('int')
     if num_train + num_val == stacks * stack_size + 1:
@@ -466,8 +454,8 @@ def simulation(npix, deltapix, stacks, stack_size, action: str, val_split=VAL_SP
 
 
 def main():
-    # Constant constructs #
-    # The following constructs are shared by all generated lensing instances
+    # Constants #
+    # The following arguments are shared by all generated lensing instances
     simulation(npix=150, deltapix=0.1, stacks=100, stack_size=1000, action='save')
 
 
