@@ -181,7 +181,8 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
     ax = subgs.subplots()
     image_ax, table_ax = gs.subplots()
     image_ax.axis('off')
-    if lens_num is not None: fig.suptitle(f'Lens #{lens_num}')
+    if lens_num is not None:
+        fig.suptitle(f'Lens #{lens_num}')
     for kwargs in kwargs_lens:
         phi, q = el2phiq(kwargs['e1'], kwargs['e2'])
         kwargs.update({'q': q, 'phi': phi})
