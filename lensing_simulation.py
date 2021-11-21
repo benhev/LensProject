@@ -81,6 +81,7 @@ def npy_write(filename: str, start_row, arr, size=None):
         arr.tofile(file)
     return start_row + num_rows
 
+
 def grid(npix, deltapix, origin_ra, origin_dec):
     """
     Creates a PixelGrid class.
@@ -168,9 +169,9 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
     :param kwargs_lens: Keyword arguments for the LensModel class, dict.
     :param extent: Extent as supplied to matplotlib.pyplot.imshow, tuple.
     :param save_dir: Directory to save image, string.
-                     Additional options:
+                     Alternative options:
                         'show' - Show the image instead of saving.
-                        'show_debug' - Save a debug image cluster.
+                        'show_debug' - Debug, saves all data shown in the 'show' option to a debug folder.
     :param lens_num: (Optional) Lens serial number, int.
     """
     assert len(data) == len(names), 'Names must match data.'
@@ -254,16 +255,18 @@ def generate_stack(npix, deltapix, stack_size, light_model):
 def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=None, kwargs_light=None,
                       kwargs_lens=None):
     """
-    Generates an instance of lensing simulation.
+    Generates an instance of lensing simulation - lensed image and lensing mass distribution (convergence).
+    The output of this function is dependent on the save_dir keyword.
+    By default this function will return the data as a list of np.ndarrays.
 
-    :param npix: Number of pixels per dimesion, int.
+    :param npix: Number of pixels per dimension, int.
     :param deltapix: Pixel resolution (arcsec/pixels), float.
     :param light_model: (Optional) Light source, LightModel instance. Defaults to Sersic.
-    :param save_dir: (Optional)
-    :param instance:
-    :param kwargs_light:
-    :param kwargs_lens:
-    :return:
+    :param save_dir: (Optional) Defaults to None. See docs of make_image for more options.
+    :param instance: (Optional) Simulation instance number,int.
+    :param kwargs_light: (Optional) Keyword arguments for a light profile.
+    :param kwargs_lens: (Optional) Keyword arguments for a lens profile.
+    :return: Lensed image and convergence, respectively, as a list of two np.ndarrays. This output can be changed.
     """
     kwargs_light = {} if kwargs_light is None else kwargs_light
     kwargs_lens = {} if kwargs_lens is None else kwargs_lens
@@ -315,6 +318,27 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
 
 
 def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, training_dir):
+    """
+    Saves a stack to numpy files.
+    Will attempt to save to each of the four possible variants:
+        Training inputs
+        Training labels
+        Validation inputs
+        Validation labels
+
+    If no validation data is required set num_val = 0.
+
+    :param kdata: Convergence data to save, np.ndarray.
+    :param imdata: Image data to save, np.ndarray.
+    :param num_train: Number of training instances, int.
+    :param num_val: Number of validation instances, int.
+    :param stack_size: Stack size, int.
+    :param positions: Starting positions in which to write for each file in the following order, tuple:
+                        (training input, training label, validation  input, validation label)
+
+    :param training_dir: Save directory, string.
+    :return: A tuple of next empty slots of each file in the order prescribed under positions parameter.
+    """
     # The following is just a mechanism of separating the training from the validation sets by counting down the
     # number of instances to be generated
     assert len(positions) == 4, f'{positions} is not a valid positions value.'
@@ -358,7 +382,19 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
 
 
 def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, **kwargs):
-    # Generates {stacks} bunches of {stack_size images}.
+    """
+    Generates and saves training data to user specified directory.
+    Separates the generation into stacks.
+    Option 1 of the main menu.
+
+    :param npix: Number of pixels per dimension, int.
+    :param deltapix: Pixel resolution (arcsec/pixels), float.
+    :param stacks: Number of stacks to generate, int.
+    :param stack_size: Size of each stack, int.
+    :param val_split: (Optional) Validation split fraction, float. Defaults to VAL_SPLIT global variable.
+    :return: training directory as string.
+    """
+
     # stack_size is also the size of the np array initialized to store the images - has memory implications.
     # val_split = 0.1
     training_dir = get_dir_gui(title='Select folder to save training data')
@@ -377,7 +413,24 @@ def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, *
     return training_dir
 
 
-def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
+def generate_image(npix, deltapix, stacks, stack_size=1, action='show', **kwargs):
+    """
+    Generates a single image.
+    Options 2 and 3 of the main menu.
+    Parameters 'stack' and 'stack_size' exist as artifacts of the method.
+    They are non-independent in this case and it is sufficient to just supply 'stacks'.
+    Ultimately their values are multiplied to get the number of images required.
+
+    :param npix: Number of pixels per dimension, int.
+    :param deltapix: Pixel resolution (arcsec/pixels), float.
+    :param stacks: Number of stacks to generate, int.
+    :param stack_size: (Optional) Size of each stack, int. Defaults to 1.
+    :param action: (Optional) Defaults to 'show'.
+                   Alternatives:
+                    'save_img' - Saves the image and will prompt for a directory.
+
+                    See further options under make_image documentation.
+    """
     light_model = LightModel(light_model_list=['SERSIC'])
     if action == 'save_img':
         img_dir = get_dir_gui(title='Image save location')
@@ -386,10 +439,22 @@ def generate_image(npix, deltapix, stacks, stack_size, action='show', **kwargs):
     stack_size *= stacks
     for i in range(stack_size):
         generate_instance(npix=npix, deltapix=deltapix, light_model=light_model, save_dir=img_dir, instance=i + 1)
-    return 0
 
 
 def simulation(npix, deltapix, stacks, stack_size, action: str, val_split=VAL_SPLIT):
+    """
+    Precursor function to all user directed simulation objectives.
+    Will initiate the user menu and follow the workflow of the data generation process.
+    Functions from this workflow can be used independently along with appropriate input arguments.
+
+    :param npix:
+    :param deltapix:
+    :param stacks:
+    :param stack_size:
+    :param action:
+    :param val_split:
+    :return:
+    """
     options = {'save': generate_training, 'save_img': generate_image, 'show': generate_image}
     func = options.get(action.lower(), None)
     if func is None:
