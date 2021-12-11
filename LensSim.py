@@ -21,9 +21,9 @@ VAL_SPLIT = 0.1
 def npy_write(filename: str, start_row, arr, size=None):
     """
     Custom function to write to an existing numpy file.
-    Based on npy_write from LensCNN (See docs therein for author credits).
+    Based on npy_read from LensCNN (See docs therein for author credits).
 
-    :param filename: File to which the function will write, string.
+    :param filename: Path to fle to which the function will write, string.
     :param start_row: Initial position in which to start filling data, int.
                       This corresponds to the array index if the entire file was loaded into memory.
     :param arr: Array to write, np.ndarray.
@@ -436,13 +436,16 @@ def simulation(npix, deltapix, stacks, stack_size, action: str, val_split=VAL_SP
     Will initiate the user menu and follow the workflow of the data generation process.
     Functions from this workflow can be used independently along with appropriate input arguments.
 
-    :param npix:
-    :param deltapix:
-    :param stacks:
-    :param stack_size:
-    :param action:
-    :param val_split:
-    :return:
+    :param npix: Number of pixels per dimension, int.
+    :param deltapix: Pixel resolution (arcsec/pixels), float.
+    :param stacks: Number of stacks to generate, int.
+    :param stack_size: (Optional) Size of each stack, int. Defaults to 1.
+    :param action: Options:
+                        'save' - saves datasets to individual files.
+                        'show' - shows the data as an image.
+                        'save_img' - saves image files for debug.
+    :param val_split: (Optional) Fraction of data to be split off for validation, float.
+                                 By default uses the globally defined validation split, VAL_SPLIT.
     """
     options = {'save': generate_training, 'save_img': generate_image, 'show': generate_image}
     func = options.get(action.lower(), None)

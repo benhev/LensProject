@@ -1,7 +1,8 @@
 Model Beta
 Loss Function: mean_squared_error
 Optimizer: Adadelta
-Metrics: root_mean_squared_error, mean_absolute_errorConv. kernel size: (3, 3)
+Metrics: root_mean_squared_error, mean_absolute_error
+Conv. kernel size: (3, 3)
 Max and UpSampling pool size:(2, 2)
 ====================================================================================================
 Initial training sequence started on 14/10/2021 at 18:48:53.

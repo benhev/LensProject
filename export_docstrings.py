@@ -54,7 +54,8 @@ def get_docs(pyfile: str):
 
 
 def main():
-    get_docs('lensing_simulation.py')
+    get_docs('LensSim.py')
+    get_docs('LensCNN.py')
 
 
 if __name__ == '__main__':

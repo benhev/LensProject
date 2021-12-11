@@ -1,4 +1,4 @@
-from lensing_simulation import simulation
+from LensSim import simulation
 from LensCNN import create_cnn, metrics, losses, optimizers
 
 if __name__ == '__main__':

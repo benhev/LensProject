@@ -162,7 +162,6 @@ class TimeHistory(callbacks.Callback):
 
     def __init__(self, model_dir, initial_epoch):
         self.dir = model_dir
-        # self.name = name
         self.epoch = initial_epoch
         self.epoch_time_start = None
         super().__init__()
@@ -268,7 +267,7 @@ def npy_read(filename: str, start_row, num_rows):
     """
     Modified from function originally written by:
     __author__ = "David Warde-Farley"
-    __copyright__ = "Copyright (c) 2012 by " + __author__
+    __copyright__ = "Copyright (c) 2012 by David Warde-Farley"
     __license__ = "3-clause BSD"
     __email__ = "dwf@dwf.model_dir"
 
@@ -315,7 +314,7 @@ def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tupl
     :param kernel_size: Convolution kernel size, double. (3,3) unless otherwise specified.
     :param pool_size: UpSampling and MaxPooling pool size, double. (2,2) unless otherwise specified.
     :param input_shape: Input image shape, triple: (W,H,D).
-    :return: Sequetial Keras model built according to the specified architecture.
+    :return: Sequential Keras model built according to the specified architecture.
     """
     # If the model is over-fitting it may be beneficial to introduce some Dropout layer
     # Further one can play with the activation functions to get different results
@@ -461,7 +460,7 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
     :param batch_size: Batch size, int.
     :param init_epoch: Initial epoch of training instance, int.
     :param auto: Can be supplied as a list or dictionary.
-    :return:
+    :return: List of callbacks, and callback log line.
     """
 
     def get_args(func):
@@ -506,7 +505,6 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
         :param k: Key to change. Required if not new.
         :param required: If key must receive a value (that is no value has been previously established, boolean. False by default.
         :param new: If the required key is new and should be requested from the user, boolean. False by default.
-        :return:
         """
         # Declare non-local variables to use from outside scope
         nonlocal model_dir, model_name, epochs, batch_size, init_epoch
@@ -558,10 +556,8 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
         temp_cb = dic_menu(dict(zip(range(1, 1 + len(options)), options.keys())), prompt=cb_prompt,
                            quit_option={'q': ''})
         while temp_cb and not add:
-            # temp_cb = options.get(temp_cb)
             print(
                 '=' * 100 + f'\nShowing documentation for {options.get(temp_cb).__name__} callback.\nEnsure all required arguments are met.\n' + '=' * 100)
-            # time.sleep(2)
             print(options.get(temp_cb).__doc__)
             print('=' * 100)
             add = (input('Add callback? (Y/N)\n').lower() == 'y')
@@ -598,8 +594,6 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
                     f'respectively).\nEnter q to quit this menu.'
         cb = get_verify_cb()
         while cb:
-            # options_menu.pop(cb)
-            # cb = options.get(cb)
             args = get_args(cb)
             req_keys = [k for k, v in args.items() if v == '']
             for key in req_keys:
@@ -650,7 +644,7 @@ def get_cbs(model_dir, epochs, batch_size, init_epoch, auto=None):
 
 def get_dir_gui(base: str = './', title='Select folder', file=False):
     """
-    Get an existing directory via gui interface.
+    Get an existing directory via a graphic interface.
 
     :param base: Initial path of prompt, string.
     :param title: Window title, string.
@@ -715,29 +709,27 @@ def validate_data(training: tuple, validation: tuple):
     return [tr_inp_shape[0], val_inp_shape[0], tr_inp_shape[1:]]
 
 
-def get_dir(target, new: bool, base=''):
+def get_dir(target, base=''):
     """
-    Requests a directory from the user.
+    Requests a name for a new directory from the user.
+    Creates the directory and returns its path.
 
     :param target: The target of the directory, some name describing the request, string.
-    :param new: Should the directory exist (False) or not (True), boolean.
     :param base: Underlying path in which to create the new directory, string.
-                 If path of base does not one will be created.
+                 If base path does not exist it will be created.
     :return: Sanitized directory as string.
     """
     if base:
         base = sanitize_path(base) + '/'
         if not isdir(base):
             Path(base).mkdir(parents=True, exist_ok=True)
-    path_dir = base + input(f'Input {target} directory: {base}')
-    while (isdir(path_dir) and new) or (not isdir(path_dir) and not new):
-        prompt = f'Directory {path_dir} exists!' if new else f'Directory {path_dir} does not exist!'
+    path_dir = base + input(f'Creating {target} directory.\nName the new directory: {base}')
+    while isdir(path_dir):
+        prompt = f'Directory {path_dir} exists!'
         print(prompt)
         path_dir = base + input(f'Input {target} directory: {base}')
 
-    if new:
-        Path(path_dir).mkdir()
-
+    Path(path_dir).mkdir()
     return sanitize_path(path_dir)
 
 
@@ -841,7 +833,6 @@ def initiate_training(**kwargs):
     epochs = kwargs.get('epochs')
     epochs = epochs or get_nat('Number of epochs')
     training_dir = sanitize_path(kwargs.get('training_dir'))
-    # training_dir = training_dir if training_dir and isdir(training_dir) else get_dir('training', new=False)
     print('Select training directory')
     training_dir = training_dir if training_dir and isdir(training_dir) else get_dir_gui(
         title='Select training directory')
@@ -894,8 +885,8 @@ def dir_menu(pattern: str, prompt: str, sanitize=''):
 def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(),
                kernel_size=(3, 3), pool_size=(2, 2), **kwargs):
     """
-    Creates a new convolutional neural network.
-    If insufficient kwargs supplied will default to user input.
+    Creates and begins training on a new convolutional neural network.
+    Invalid supplied kwargs or altogether missing kwargs will default to user input.
 
     :param metric: Metrics to use, list. May be a list of names according to TF docs or proper metric functions
                    (custom or tf.keras.metrics). RMSE by default.
@@ -928,7 +919,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
             print(f'Directory {model_dir} exists!')
         print('Select model base directory.')
         model_dir = get_dir_gui(title='Select model base directory')
-        model_dir = get_dir(target='model', new=True, base=model_dir)
+        model_dir = get_dir(target='model', base=model_dir)
 
     model_name = basename(model_dir)
     batch_size, epochs, training, validation = initiate_training(**kwargs)
@@ -960,14 +951,14 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
 
 def load_cnn(**kwargs):
     """
-    Loads an existing convolutional neural network save.
-    If insufficient kwargs supplied will default to user input.
+    Loads and begins training on an existing convolutional neural network save.
+    Invalid supplied kwargs or altogether missing kwargs will default to user input.
 
     Optional key-word arguments:
         General:
             :model_dir: Path to model folder, string. Directory must exist.
             :save_type: Type of save to load, string. Possible values: Checkpoint/cp or BestFit/bf/bst (case insensitive).
-                        Must be supplied along model_name.
+                        Must be supplied along model_dir.
             :save_epoch: Epoch of save, int. Required for loading a best fit model (and sometimes a checkpoint if more than one exists).
                          save_epoch identifies the save and must be supplied.
             :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
@@ -991,17 +982,17 @@ def load_cnn(**kwargs):
             model_to_load = glob.glob(f'{model_dir}/Checkpoint/*.h5')
             if len(model_to_load) > 1:
                 assert load_epoch, f'More than one checkpoint found in {model_dir}. Specify save_epoch to specify model to load.'
-                model_to_load = [x for x in model_to_load if f'epoch={load_epoch:03d}' in x]
+                model_to_load = [x for x in model_to_load if f'epoch={load_epoch}' in x]
                 if len(model_to_load) != 1:
                     print(
-                        f'There should be no more than one checkpoint with a specific epoch in {model_dir}, found {len(model_to_load)}.')
+                        f'There should be exactly one checkpoint with a specific epoch in {model_dir}, found {len(model_to_load)}.')
                     model_to_load = []
         elif save_type.lower() in ['bestfit', 'bf', 'bst']:
             assert load_epoch, 'Cannot auto-load best fit without specified epoch.'
-            model_to_load = glob.glob(f'{model_dir}/BestFit/*epoch={load_epoch:03d}*.h5')
+            model_to_load = glob.glob(f'{model_dir}/BestFit/*epoch={load_epoch}*.h5')
             if len(model_to_load) != 1:
                 print(
-                    f'Cannot find specific best fit model for {model_name} with epoch={load_epoch:03d} in {model_dir}.')
+                    f'Cannot find specific best fit model for {model_name} with epoch={load_epoch} in {model_dir}.')
                 model_to_load = []
         else:
             raise ValueError(f'Unrecognized save_type: {save_type}')
@@ -1081,8 +1072,8 @@ def train_model(model: Sequential, batch_size, epochs, training, validation, cal
     :param model: Model to be trained, keras Sequential model.
     :param batch_size: Batch size, int.
     :param epochs: Number of epochs, int.
-    :param training: Training files, double: (input,label).
-    :param validation: Validation files, double: (input,label).
+    :param training: Training files, tuple: (input, label).
+    :param validation: Validation files, tuple: (input, label).
     :param callbacks: List of callbacks, list.
     :param model_dir: Model directory, string.
     :param init_epoch: Initial epoch, int. 0 by default.
