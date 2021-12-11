@@ -8,7 +8,8 @@ from tkinter import filedialog as filedlg, Tk
 from tensorflow.keras.utils import Sequence as Keras_Sequence
 from tensorflow.keras import losses, optimizers, metrics
 from tensorflow.keras.models import Sequential, load_model
-from tensorflow.keras.layers import Conv2D, MaxPool2D, UpSampling2D  # , Dropout
+from tensorflow.keras.layers import Conv2D, \
+    MaxPool2D, UpSampling2D, Dropout
 from tensorflow.keras import callbacks
 from pathlib import Path
 from os.path import isdir, isfile, basename, dirname
@@ -318,6 +319,9 @@ def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tupl
     """
     # If the model is over-fitting it may be beneficial to introduce some Dropout layer
     # Further one can play with the activation functions to get different results
+
+    ### Begin model architecture ###
+
     model = Sequential(name=basename(model_dir))
 
     model.add(Conv2D(16, kernel_size=kernel_size, activation='relu', input_shape=input_shape, padding='same',
@@ -335,6 +339,8 @@ def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tupl
     model.add(Conv2D(32, kernel_size=kernel_size, activation='relu', padding='same', kernel_initializer='he_normal'))
     model.add(UpSampling2D(size=pool_size))
 
+    ### End model architecture ###
+    # this last layer is necessary to reduce dimensions to match with the output
     model.add(Conv2D(1, kernel_size=(1, 1), activation='relu', padding='same', kernel_initializer='he_normal'))
     model.compile(loss=loss_func, optimizer=optimizer, metrics=metric)
 

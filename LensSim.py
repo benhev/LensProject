@@ -16,6 +16,7 @@ from LensCNN import get_dir_gui
 
 MARGIN_FRACTION = 0.4
 VAL_SPLIT = 0.1
+PLOT_FONT_SIZE = 16
 
 
 def npy_write(filename: str, start_row, arr, size=None):
@@ -184,17 +185,19 @@ def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
         else:
             ax[k].imshow(data[k], origin='lower', extent=extent)
         ax[k].title.set_text(names[k])
+        ax[k].title.set_fontsize(PLOT_FONT_SIZE)
     table_ax.axis('off')
     table_ax.title.set_text('Lens Parameters')
+    table_ax.title.set_fontsize(PLOT_FONT_SIZE)
     tbl = plt.table(cellText=np.around(table_data, decimals=2), colLabels=col_label, rowLabels=row_label,
                     loc='best')
     tbl.auto_set_font_size(False)
-    tbl.set_fontsize(12)
+    tbl.set_fontsize(PLOT_FONT_SIZE)
     table_ax.add_table(tbl)
     fig.set_size_inches(3 * len(data), 8)
     if 'show' in save_dir.lower():
         if 'debug' in save_dir.lower():
-            base = 'debug'
+            base = get_dir_gui()+'/debug'
             save_dir = f'Lens{lens_num if lens_num is not None else ""}/'
             if not isdir('/'.join((base, save_dir))):
                 Path(base, save_dir).mkdir(parents=True, exist_ok=True)
@@ -253,7 +256,8 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
 
     :param npix: Number of pixels per dimension, int.
     :param deltapix: Pixel resolution (arcsec/pixels), float.
-    :param light_model: (Optional) Light source, LightModel instance. Defaults to Sersic.
+    :param light_model: (Optional) Light source, LightModel instance or identifying string (see LightModel docs in TF).
+                        Defaults to Sersic.
     :param save_dir: (Optional) Defaults to None. See docs of make_image for more options.
     :param instance: (Optional) Simulation instance number,int.
     :param kwargs_light: (Optional) Keyword arguments for a light profile.
@@ -263,6 +267,8 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     kwargs_light = {} if kwargs_light is None else kwargs_light
     kwargs_lens = {} if kwargs_lens is None else kwargs_lens
     light_model = light_model or LightModel(['SERSIC'])
+    if isinstance(light_model, str):
+        light_model = LightModel([light_model])
     kwargs_nums = {'supersampling_factor': 1, 'supersampling_convolution': False}
     # PSF
     kwargs_psf = {'psf_type': 'GAUSSIAN', 'fwhm': 0.1, 'pixel_size': deltapix}
