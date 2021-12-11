@@ -346,7 +346,7 @@ def create_model(loss_func, optimizer, metric, model_dir: str, input_shape: tupl
 
 def time_convert(seconds):
     """
-    Convert time from seconds to regular hh:mm:ss format.
+    Convert time from seconds to regular HH:mm:ss format.
 
     :param seconds: Time in seconds, float.
     """

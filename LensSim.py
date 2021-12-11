@@ -131,6 +131,7 @@ def sample_center(grid_class, margin=MARGIN_FRACTION):
 
     :param grid_class: An instance of the PixelGrid class.
     :param margin: (Optional) Forbidden image margins as fraction of the total dimension, float.
+                              Global margin value is taken by default.
     :return: 2D vector object, as np.ndarray.
     """
     assert margin <= 1 / 2, 'MARGIN_FRACTION must be <=1/2.'
@@ -138,9 +139,9 @@ def sample_center(grid_class, margin=MARGIN_FRACTION):
     xmax, ymax = (1 - 2 * margin) * np.array(list(map(np.max, grid_class.pixel_coordinates)))
     cx, cy = list(map(lambda x: np.random.uniform(*x), [(xmin, xmax), (ymin, ymax)]))
     # There used to be an issue with random numbers as input to lenstronomy. Probably due to some numerical issue,
-    # floats beyond some precision generate weird effects in the generated data. They were originally rounded;
+    # floats beyond some precision induce weird effects in the generated data. They were originally rounded;
     # however, using the new generation method implemented above this appears to be unnecessary. It is left in the
-    # interest of completeness
+    # interest of completeness and in case it is required in the future:
     # cx, cy = np.around(grid_class.map_pix2coord(x=cx, y=cy), decimals=1)
     return np.array([cx, cy])
 
@@ -148,10 +149,12 @@ def sample_center(grid_class, margin=MARGIN_FRACTION):
 def make_image(data, names, kwargs_lens, extent, save_dir, lens_num=None):
     """
     Generates an image of the lensing scenario.
-    Plots all data supplied, convergence is plotted with log scaling.
+    Plots all data supplied, convergence is log scaled.
+    The supplied data can be changed in the call to this function
+    Note that each data set to be plotted must be accompanied by a label.
 
-    :param data: Image data to plot, list of images.
-    :param names: Names of plots, in order and of the same dimension as data, list of strings.
+    :param data: Image data to plot, list of images (as np.ndarray).
+    :param names: Plot labels, in order and of the same dimension as data, list of strings.
     :param kwargs_lens: Keyword arguments for the LensModel class, dict.
     :param extent: Extent as supplied to matplotlib.pyplot.imshow, tuple.
     :param save_dir: Directory to save image, string.
@@ -227,7 +230,7 @@ def generate_stack(npix, deltapix, stack_size, light_model):
     :param npix: Number of pixels per dimension, int.
     :param deltapix: Pixel resolution (arcsec/pixel), float.
     :param stack_size: Size of stack to generate, int.
-    :param light_model: Light source for which to simulate lensing, LightModel instance.
+    :param light_model: Light source to lens, LightModel instance.
     :return: Stack of inputs and labels for each simulated instance as list of np.ndarray.
     """
     # Container for kappa data
@@ -246,7 +249,7 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
     """
     Generates an instance of lensing simulation - lensed image and lensing mass distribution (convergence).
     The output of this function is dependent on the save_dir keyword.
-    By default this function will return the data as a list of np.ndarrays.
+    By default this function will return the data as a list of np.ndarray.
 
     :param npix: Number of pixels per dimension, int.
     :param deltapix: Pixel resolution (arcsec/pixels), float.
@@ -289,7 +292,7 @@ def generate_instance(npix, deltapix, light_model=None, save_dir=None, instance=
                                      lens_light_add=False, kwargs_ps=None))
     kappa = to_img(lens_model.kappa(x=xgrid, y=ygrid, kwargs=kwargs_lens))
 
-    # The distinction is made in order to get images instead of raw data - mainly for testing purposes
+    # The distinction is made in order to get images instead of/in addition to raw data - mainly for testing purposes
     if save_dir is None:
         return [kappa, image]
     else:
@@ -374,7 +377,7 @@ def save_stack(kdata, imdata, num_train, num_val, stack_size, positions, trainin
 
 def generate_training(npix, deltapix, stacks, stack_size, val_split=VAL_SPLIT, **kwargs):
     """
-    Generates and saves training data to user specified directory.
+    Generates and saves training data to the specified directory.
     Separates the generation into stacks.
     Option 1 of the main menu.
 
@@ -434,15 +437,16 @@ def simulation(npix, deltapix, stacks, stack_size, action: str, val_split=VAL_SP
     """
     Precursor function to all user directed simulation objectives.
     Will initiate the user menu and follow the workflow of the data generation process.
-    Functions from this workflow can be used independently along with appropriate input arguments.
+    Functions from this workflow (in this module) can be used independently along with appropriate input arguments.
 
     :param npix: Number of pixels per dimension, int.
     :param deltapix: Pixel resolution (arcsec/pixels), float.
     :param stacks: Number of stacks to generate, int.
-    :param stack_size: (Optional) Size of each stack, int. Defaults to 1.
+    :param stack_size: Size of each stack, int.
     :param action: Options:
-                        'save' - saves datasets to individual files.
-                        'show' - shows the data as an image.
+                        'save' - Saves datasets to individual files.
+                        'show' - Shows the data as an image.
+                        'show_debug' - Debug, saves all data shown in the 'show' option to a debug folder.
                         'save_img' - saves image files for debug.
     :param val_split: (Optional) Fraction of data to be split off for validation, float.
                                  By default uses the globally defined validation split, VAL_SPLIT.
