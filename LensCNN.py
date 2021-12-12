@@ -909,7 +909,7 @@ def create_cnn(metric=None, loss_func=losses.mse, optimizer=optimizers.Adadelta(
             :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
             :comments: Comments to add to the log file, string.
 
-        Relevant to initialize_training() (see function documentation):
+        Relevant to initiate_training() (see function documentation):
             :batch_size:
             :epochs:
             :training_dir:
@@ -970,7 +970,7 @@ def load_cnn(**kwargs):
             :callback: Callbacks in the format accepted in the 'auto' parameter in get_cbs(), list or dict.
             :comments: Comments to add to the log file, string.
 
-        Relevant to initialize_training() (see function documentation):
+        Relevant to initiate_training() (see function documentation):
             :batch_size:
             :epochs:
             :training_dir:
